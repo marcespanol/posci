@@ -1,0 +1,27 @@
+.layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.block {
+  position: absolute;
+  pointer-events: auto;
+  display: inline-grid;
+  gap: 0.35rem;
+}
+
+.dragHandle {
+  width: 34px;
+  height: 14px;
+  border: 1px solid #b8cadf;
+  border-radius: 999px;
+  background: #f2f7fd;
+  color: #355275;
+  font-size: 0.65rem;
+  line-height: 1;
+  display: inline-grid;
+  place-items: center;
+  cursor: move;
+  user-select: none;
+}

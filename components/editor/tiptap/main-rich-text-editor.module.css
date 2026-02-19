@@ -1,0 +1,80 @@
+.wrapper {
+  display: grid;
+  gap: 0.42rem;
+}
+
+.bubble {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  background: #102740;
+  color: #fff;
+  border-radius: 999px;
+  padding: 0.28rem;
+  box-shadow: 0 8px 20px rgba(11, 31, 54, 0.24);
+}
+
+.tool {
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font-size: 0.74rem;
+  line-height: 1;
+  padding: 0.3rem 0.46rem;
+  cursor: pointer;
+}
+
+.toolActive {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.editor {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  padding: 0.6rem 0.7rem;
+  min-height: 130px;
+}
+
+.editor :global(.ProseMirror) {
+  outline: none;
+}
+
+.editor :global(.ProseMirror p) {
+  margin: 0;
+}
+
+.editor :global(.ProseMirror h2) {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.editor :global(.ProseMirror h2 + p),
+.editor :global(.ProseMirror p + p),
+.editor :global(.ProseMirror p + h2),
+.editor :global(.ProseMirror h2 + h2) {
+  margin-top: 0.55rem;
+}
+
+.editor :global(.ProseMirror img) {
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+}
+
+.inlineTools {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.toolGhost {
+  border: 1px solid #d5deea;
+  background: #fff;
+  color: #304862;
+  border-radius: 8px;
+  padding: 0.25rem 0.48rem;
+  font-size: 0.74rem;
+  cursor: pointer;
+}

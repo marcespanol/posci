@@ -1,0 +1,196 @@
+.page {
+  position: relative;
+  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
+  background: #d8d8da;
+}
+
+.loading {
+  margin: 0;
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #324153;
+}
+
+.topLeftBar,
+.topRightBar,
+.topRightMeta,
+.leftRail,
+.leftPanel {
+  position: absolute;
+  z-index: 50;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid #d6dde6;
+  box-shadow: 0 8px 24px rgba(10, 20, 35, 0.1);
+}
+
+.topLeftBar {
+  top: 0.75rem;
+  left: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.7rem 0.9rem;
+  border-radius: 10px;
+  min-width: 360px;
+}
+
+.logo {
+  font-size: 1.65rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.divider {
+  width: 1px;
+  height: 24px;
+  background: #dbe2ea;
+}
+
+.posterTitleInput {
+  border: 0;
+  border-radius: 6px;
+  padding: 0.25rem 0.15rem;
+  font-size: 1rem;
+  background: transparent;
+  min-width: 190px;
+}
+
+.posterTitleInput:focus {
+  outline: none;
+}
+
+.topRightBar {
+  top: 0.75rem;
+  right: 0.75rem;
+  padding: 0;
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+}
+
+.topRightMeta {
+  top: 4rem;
+  right: 0.75rem;
+  border-radius: 10px;
+  padding: 0.45rem 0.6rem;
+}
+
+.statusMeta {
+  font-size: 0.78rem;
+  color: #4f6175;
+  white-space: nowrap;
+}
+
+.errorMeta {
+  display: block;
+  margin-top: 0.25rem;
+  color: #b42318;
+  font-size: 0.75rem;
+  max-width: 320px;
+}
+
+.generalMenuDock {
+  position: absolute;
+  top: 4.95rem;
+  left: 0.75rem;
+  z-index: 50;
+}
+
+.leftRail {
+  top: 6.1rem;
+  left: 0.75rem;
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.55rem;
+  border-radius: 10px;
+}
+
+.railButton {
+  width: 34px;
+  height: 34px;
+  border: 1px solid #d3dde8;
+  border-radius: 8px;
+  background: #fff;
+  color: #2c435d;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.railButtonActive {
+  background: #ecf4ff;
+  border-color: #a8c5eb;
+}
+
+.leftPanel {
+  top: 6.1rem;
+  left: 3.8rem;
+  width: min(360px, calc(100vw - 5.1rem));
+  max-height: calc(100vh - 7.2rem);
+  overflow: auto;
+  padding: 0.8rem;
+  border-radius: 10px;
+}
+
+.panelGroup {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.panelTitle {
+  margin: 0;
+  font-size: 0.98rem;
+}
+
+.panelText {
+  margin: 0;
+  font-size: 0.86rem;
+  color: #52667d;
+}
+
+.canvasViewport {
+  position: absolute;
+  inset: 0;
+  padding: 4.2rem 1rem 1rem 1rem;
+}
+
+.canvasViewport > * {
+  height: 100%;
+}
+
+@media (max-width: 960px) {
+  .topLeftBar {
+    min-width: 0;
+    width: calc(100vw - 1.5rem);
+  }
+
+  .topRightBar,
+  .topRightMeta {
+    right: 0.55rem;
+  }
+
+  .topRightBar {
+    top: 4.35rem;
+  }
+
+  .topRightMeta {
+    top: 7.45rem;
+  }
+
+  .leftRail,
+  .leftPanel {
+    top: 8.8rem;
+  }
+
+  .canvasViewport {
+    padding-top: 7rem;
+  }
+
+  .generalMenuDock {
+    top: 8.8rem;
+  }
+}

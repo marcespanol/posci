@@ -1,0 +1,42 @@
+.menu {
+  display: grid;
+  gap: 0.6rem;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid #d6dde6;
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(10, 20, 35, 0.1);
+  padding: 0.7rem;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.label {
+  font-size: 0.78rem;
+  color: #556779;
+  margin-right: 0.25rem;
+}
+
+.button {
+  border: 1px solid #d3dde8;
+  background: #fff;
+  color: #20364f;
+  border-radius: 8px;
+  padding: 0.32rem 0.5rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.buttonActive {
+  border-color: #9cc0ea;
+  background: #edf5ff;
+}

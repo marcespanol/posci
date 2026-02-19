@@ -1,0 +1,201 @@
+.page {
+  min-height: 100vh;
+  background: #ececec;
+  padding: 1rem;
+}
+
+.toolbar {
+  position: sticky;
+  top: 0.75rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0 auto 1rem;
+  max-width: 1100px;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid #d8d8d8;
+  border-radius: 10px;
+  padding: 0.6rem 0.8rem;
+}
+
+.meta {
+  margin: 0;
+  color: #44566c;
+  font-size: 0.82rem;
+}
+
+.actions {
+  display: flex;
+  gap: 0.55rem;
+}
+
+.button {
+  border: 1px solid #2d62bc;
+  border-radius: 8px;
+  background: #2d62bc;
+  color: #fff;
+  padding: 0.42rem 0.65rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.canvasWrap {
+  overflow: auto;
+  padding-bottom: 1rem;
+}
+
+.poster {
+  position: relative;
+  margin: 0 auto;
+  background: #fff;
+  box-shadow: 0 14px 38px rgba(0, 0, 0, 0.14);
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+}
+
+.a1Portrait {
+  width: 594mm;
+  height: 841mm;
+}
+
+.a1Landscape {
+  width: 841mm;
+  height: 594mm;
+}
+
+.screenPortrait {
+  width: 2160px;
+  height: 3840px;
+}
+
+.screenLandscape {
+  width: 3840px;
+  height: 2160px;
+}
+
+.header,
+.footer {
+  padding: 20mm 20mm 14mm;
+  border-bottom: 2px solid #d9e2ed;
+}
+
+.footer {
+  border-top: 2px solid #d9e2ed;
+  border-bottom: 0;
+  padding-top: 12mm;
+}
+
+.main {
+  position: relative;
+  padding: 12mm 20mm;
+  overflow: hidden;
+}
+
+.columns {
+  display: flex;
+  gap: 7mm;
+  height: 100%;
+}
+
+.column {
+  min-width: 0;
+  display: grid;
+  gap: 7mm;
+  align-content: start;
+}
+
+.segment {
+  border: 1px solid #d9e2ed;
+  border-radius: 6px;
+  padding: 4mm;
+  min-height: 22mm;
+  background: #fff;
+  display: grid;
+  gap: 3mm;
+}
+
+.floatingLayer {
+  position: absolute;
+  inset: 12mm 20mm;
+  pointer-events: none;
+}
+
+.floatingBlock {
+  position: absolute;
+  max-width: 320px;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid #d9e2ed;
+  border-radius: 6px;
+  padding: 2.4mm 3mm;
+}
+
+.rich :global(p) {
+  margin: 0;
+  line-height: 1.32;
+  font-size: 17px;
+}
+
+.rich :global(h2) {
+  margin: 0;
+  line-height: 1.2;
+  font-size: 24px;
+}
+
+.rich :global(h2 + p),
+.rich :global(p + p),
+.rich :global(p + h2),
+.rich :global(h2 + h2) {
+  margin-top: 8px;
+}
+
+.rich :global(figure) {
+  margin: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.rich :global(figcaption) {
+  margin: 0;
+  font-size: 12px;
+  color: #4f647d;
+}
+
+.rich :global(img) {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+.rich :global(img.inline-image) {
+  display: inline-block;
+  max-height: 1.2em;
+  width: auto;
+  vertical-align: middle;
+}
+
+@media print {
+  .page {
+    background: #fff;
+    padding: 0;
+  }
+
+  .toolbar {
+    display: none;
+  }
+
+  .poster {
+    box-shadow: none;
+    margin: 0;
+  }
+
+  .a1Portrait {
+    width: 594mm;
+    height: 841mm;
+  }
+
+  .a1Landscape {
+    width: 841mm;
+    height: 594mm;
+  }
+}

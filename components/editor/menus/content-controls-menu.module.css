@@ -1,0 +1,32 @@
+.menu {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid #d6dde6;
+  border-radius: 12px;
+  box-shadow: 0 8px 26px rgba(10, 20, 35, 0.14);
+  padding: 0.55rem 0.65rem;
+}
+
+.button {
+  border: 1px solid #d3dde8;
+  border-radius: 8px;
+  background: #fff;
+  color: #223953;
+  font-size: 0.78rem;
+  padding: 0.35rem 0.55rem;
+  cursor: pointer;
+}
+
+.button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.meta {
+  margin: 0;
+  font-size: 0.75rem;
+  color: #54687f;
+}

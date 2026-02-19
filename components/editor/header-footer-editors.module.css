@@ -1,0 +1,15 @@
+.container {
+  display: grid;
+  gap: 1rem;
+}
+
+.sectionTitle {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+}
+
+.helper {
+  margin: 0.2rem 0 0.6rem;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
