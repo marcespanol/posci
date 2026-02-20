@@ -24,8 +24,11 @@ export const createDefaultPosterDoc = (title: string): PosterDoc => {
 
   const blocks = {
     "block-main-intro": createTextBlock("block-main-intro", "Introduction", "Start writing your poster content here."),
+    "block-main-intro-b": createTextBlock("block-main-intro-b", "Background", "Add background details."),
     "block-main-methods": createTextBlock("block-main-methods", "Methods", "Describe methods, materials, and setup."),
-    "block-main-results": createTextBlock("block-main-results", "Results", "Summarize findings and key visuals.")
+    "block-main-methods-b": createTextBlock("block-main-methods-b", "Procedure", "Write step-by-step process."),
+    "block-main-results": createTextBlock("block-main-results", "Results", "Summarize findings and key visuals."),
+    "block-main-results-b": createTextBlock("block-main-results-b", "Discussion", "Interpret the results and key takeaways.")
   };
 
   return {
@@ -70,7 +73,13 @@ export const createDefaultPosterDoc = (title: string): PosterDoc => {
             segments: [
               {
                 id: "seg-1",
-                blockIds: ["block-main-intro"]
+                blockIds: ["block-main-intro"],
+                heightRatio: 0.5
+              },
+              {
+                id: "seg-1b",
+                blockIds: ["block-main-intro-b"],
+                heightRatio: 0.5
               }
             ]
           },
@@ -80,7 +89,13 @@ export const createDefaultPosterDoc = (title: string): PosterDoc => {
             segments: [
               {
                 id: "seg-2",
-                blockIds: ["block-main-methods"]
+                blockIds: ["block-main-methods"],
+                heightRatio: 0.5
+              },
+              {
+                id: "seg-2b",
+                blockIds: ["block-main-methods-b"],
+                heightRatio: 0.5
               }
             ]
           },
@@ -90,7 +105,13 @@ export const createDefaultPosterDoc = (title: string): PosterDoc => {
             segments: [
               {
                 id: "seg-3",
-                blockIds: ["block-main-results"]
+                blockIds: ["block-main-results"],
+                heightRatio: 0.5
+              },
+              {
+                id: "seg-3b",
+                blockIds: ["block-main-results-b"],
+                heightRatio: 0.5
               }
             ]
           }

@@ -23,6 +23,7 @@ export interface PosterHeaderFooter {
 export interface PosterColumnSegment {
   id: string;
   blockIds: string[];
+  heightRatio?: number;
 }
 
 export interface PosterColumn {

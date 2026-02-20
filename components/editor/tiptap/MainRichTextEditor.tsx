@@ -1,37 +1,127 @@
 "use client";
 
 import { BubbleMenu, EditorContent, useEditor } from "@tiptap/react";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 import type { TipTapJsonContent } from "@/lib/poster/types";
+import { uploadPosterAsset } from "@/lib/supabase/assets-client";
+import { usePosterEditorStore } from "@/lib/store/poster-store";
 import { mainExtensions } from "@/components/editor/tiptap/MainExtensions";
 import styles from "@/components/editor/tiptap/main-rich-text-editor.module.css";
-import { uploadPosterAsset } from "@/lib/supabase/assets-client";
 
 interface MainRichTextEditorProps {
-  posterId: string;
   content: TipTapJsonContent;
   onChange: (content: TipTapJsonContent) => void;
-  onError?: (message: string) => void;
 }
 
-const promptImageSrc = (): string | null => {
-  const input = globalThis.prompt("Image URL");
-  if (!input) {
-    return null;
+const convertImageFileToPng = async (file: File): Promise<File> => {
+  if (file.type === "image/png") {
+    return file;
   }
 
-  const trimmed = input.trim();
-  return trimmed.length > 0 ? trimmed : null;
+  const objectUrl = URL.createObjectURL(file);
+
+  try {
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const target = new Image();
+      target.onload = () => resolve(target);
+      target.onerror = () => reject(new Error("Failed to decode pasted image"));
+      target.src = objectUrl;
+    });
+
+    const canvas = document.createElement("canvas");
+    canvas.width = image.naturalWidth || image.width;
+    canvas.height = image.naturalHeight || image.height;
+    const context = canvas.getContext("2d");
+    if (!context) {
+      return file;
+    }
+
+    context.drawImage(image, 0, 0);
+    const pngBlob = await new Promise<Blob | null>((resolve) => {
+      canvas.toBlob((blob) => resolve(blob), "image/png");
+    });
+
+    if (!pngBlob) {
+      return file;
+    }
+
+    const baseName = file.name.replace(/\.[a-z0-9]+$/i, "") || "pasted-image";
+    return new File([pngBlob], `${baseName}.png`, { type: "image/png" });
+  } catch {
+    return file;
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
 };
 
-export default function MainRichTextEditor({ posterId, content, onChange, onError }: MainRichTextEditorProps) {
+export default function MainRichTextEditor({ content, onChange }: MainRichTextEditorProps) {
+  const posterId = usePosterEditorStore((state) => state.posterId);
+  const lastEmittedJsonRef = useRef<string | null>(null);
+
   const editor = useEditor({
     extensions: mainExtensions,
     content,
     immediatelyRender: false,
+    editorProps: {
+      handlePaste: (_view, event) => {
+        if (!posterId) {
+          return false;
+        }
+
+        const items = Array.from(event.clipboardData?.items ?? []);
+        const imageItem = items.find((item) => item.type.startsWith("image/"));
+        if (!imageItem) {
+          return false;
+        }
+
+        const file = imageItem.getAsFile();
+        if (!file) {
+          return false;
+        }
+
+        event.preventDefault();
+
+        void (async () => {
+          try {
+            const normalizedFile = await convertImageFileToPng(file);
+            const uploaded = await uploadPosterAsset(posterId, normalizedFile);
+            const src = uploaded.signedUrl;
+            if (!src) {
+              throw new Error("Uploaded image URL is empty");
+            }
+
+            const alt = normalizedFile.name || "Pasted image";
+            editor
+              ?.chain()
+              .focus()
+              .insertContent({
+                type: "image",
+                attrs: {
+                  src,
+                  alt,
+                  width: 520
+                }
+              })
+              .run();
+
+            const synced = editor?.getJSON() as TipTapJsonContent | undefined;
+            if (synced) {
+              lastEmittedJsonRef.current = JSON.stringify(synced);
+              onChange(synced);
+            }
+          } catch (error) {
+            console.error("Clipboard image upload failed", error);
+          }
+        })();
+
+        return true;
+      }
+    },
     onUpdate: ({ editor: activeEditor }) => {
-      onChange(activeEditor.getJSON() as TipTapJsonContent);
+      const next = activeEditor.getJSON() as TipTapJsonContent;
+      lastEmittedJsonRef.current = JSON.stringify(next);
+      onChange(next);
     }
   });
 
@@ -40,79 +130,40 @@ export default function MainRichTextEditor({ posterId, content, onChange, onErro
       return;
     }
 
+    const incoming = JSON.stringify(content);
+    if (lastEmittedJsonRef.current === incoming) {
+      return;
+    }
+
     const current = editor.getJSON() as TipTapJsonContent;
-    if (JSON.stringify(current) === JSON.stringify(content)) {
+    const currentSerialized = JSON.stringify(current);
+    if (currentSerialized === incoming) {
+      lastEmittedJsonRef.current = incoming;
       return;
     }
 
     editor.commands.setContent(content, false);
+    lastEmittedJsonRef.current = incoming;
   }, [content, editor]);
 
   if (!editor) {
     return null;
   }
 
-  const insertBlockImage = () => {
-    const src = promptImageSrc();
-    if (!src) {
-      return;
-    }
-
-    editor.chain().focus().setImage({ src, alt: "Poster image" }).run();
-  };
-
-  const insertInlineImage = () => {
-    const src = promptImageSrc();
-    if (!src) {
-      return;
-    }
-
-    editor
-      .chain()
-      .focus()
-      .insertContent({
-        type: "inlineImage",
-        attrs: { src, alt: "Inline image" }
-      })
-      .run();
-  };
-
-  const uploadAndInsert = (mode: "block" | "inline") => {
-    const picker = document.createElement("input");
-    picker.type = "file";
-    picker.accept = "image/*";
-    picker.onchange = async () => {
-      const file = picker.files?.[0];
-      if (!file) {
-        return;
-      }
-
-      try {
-        const uploaded = await uploadPosterAsset(posterId, file);
-
-        if (mode === "block") {
-          editor.chain().focus().setImage({ src: uploaded.signedUrl, alt: file.name }).run();
-          return;
-        }
-
-        editor
-          .chain()
-          .focus()
-          .insertContent({
-            type: "inlineImage",
-            attrs: { src: uploaded.signedUrl, alt: file.name }
-          })
-          .run();
-      } catch (error) {
-        onError?.(error instanceof Error ? error.message : "Image upload failed");
-      }
-    };
-    picker.click();
-  };
-
   return (
     <div className={styles.wrapper}>
-      <BubbleMenu editor={editor} tippyOptions={{ duration: 120 }}>
+      <BubbleMenu
+        editor={editor}
+        tippyOptions={{
+          duration: 120,
+          placement: "top",
+          appendTo: () => document.body,
+          offset: [0, 10],
+          popperOptions: {
+            strategy: "fixed"
+          }
+        }}
+      >
         <div className={styles.bubble}>
           <button
             type="button"
@@ -154,21 +205,6 @@ export default function MainRichTextEditor({ posterId, content, onChange, onErro
 
       <div className={styles.editor}>
         <EditorContent editor={editor} />
-      </div>
-
-      <div className={styles.inlineTools}>
-        <button type="button" className={styles.toolGhost} onClick={insertBlockImage}>
-          Image block
-        </button>
-        <button type="button" className={styles.toolGhost} onClick={insertInlineImage}>
-          Inline image
-        </button>
-        <button type="button" className={styles.toolGhost} onClick={() => uploadAndInsert("block")}>
-          Upload block
-        </button>
-        <button type="button" className={styles.toolGhost} onClick={() => uploadAndInsert("inline")}>
-          Upload inline
-        </button>
       </div>
     </div>
   );

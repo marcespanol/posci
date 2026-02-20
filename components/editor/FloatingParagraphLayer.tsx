@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, type PointerEvent as ReactPointerEvent } from "react";
+import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 
 import styles from "@/components/editor/floating-paragraph-layer.module.css";
 import FloatingParagraphEditor from "@/components/editor/tiptap/FloatingParagraphEditor";
@@ -17,12 +17,22 @@ interface DragSession {
   pointerOffsetY: number;
 }
 
+const isEditorTarget = (target: EventTarget | null): boolean => {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  return Boolean(target.closest("[data-floating-editor='true']"));
+};
+
 export default function FloatingParagraphLayer({ blocks }: FloatingParagraphLayerProps) {
   const setBlockContent = usePosterEditorStore((state) => state.setBlockContent);
   const setFloatingBlockPosition = usePosterEditorStore((state) => state.setFloatingBlockPosition);
+  const removeFloatingParagraph = usePosterEditorStore((state) => state.removeFloatingParagraph);
 
   const layerRef = useRef<HTMLDivElement | null>(null);
   const dragSessionRef = useRef<DragSession | null>(null);
+  const [activeBlockId, setActiveBlockId] = useState<string | null>(null);
 
   const onMove = (event: PointerEvent) => {
     const session = dragSessionRef.current;
@@ -49,7 +59,7 @@ export default function FloatingParagraphLayer({ blocks }: FloatingParagraphLaye
     window.removeEventListener("pointerup", onUp);
   };
 
-  const beginDrag = (event: ReactPointerEvent<HTMLButtonElement>, block: PosterFloatingParagraphBlock) => {
+  const beginDrag = (event: ReactPointerEvent<HTMLDivElement>, block: PosterFloatingParagraphBlock) => {
     const layer = layerRef.current;
     if (!layer) {
       return;
@@ -75,11 +85,42 @@ export default function FloatingParagraphLayer({ blocks }: FloatingParagraphLaye
   return (
     <div className={styles.layer} ref={layerRef}>
       {blocks.map((block) => (
-        <div key={block.id} className={styles.block} style={{ left: `${block.position.x}px`, top: `${block.position.y}px` }}>
-          <button type="button" className={styles.dragHandle} onPointerDown={(event) => beginDrag(event, block)}>
-            Move
+        <div
+          key={block.id}
+          className={`${styles.block} ${activeBlockId === block.id ? styles.blockActive : ""}`}
+          style={{ left: `${block.position.x}px`, top: `${block.position.y}px` }}
+          onPointerDown={(event) => {
+            setActiveBlockId(block.id);
+            if (isEditorTarget(event.target)) {
+              return;
+            }
+
+            beginDrag(event, block);
+          }}
+          onFocusCapture={() => {
+            setActiveBlockId(block.id);
+          }}
+        >
+          <button
+            type="button"
+            className={styles.removeButton}
+            aria-label="Remove floating paragraph"
+            onPointerDown={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              setActiveBlockId(block.id);
+            }}
+            onClick={() => {
+              removeFloatingParagraph(block.id);
+            }}
+          >
+            <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+              <path d="M18 6L6 18M6 6l12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
           </button>
-          <FloatingParagraphEditor content={block.content} onChange={(content) => setBlockContent(block.id, content)} />
+          <div data-floating-editor="true" className={styles.editorShell}>
+            <FloatingParagraphEditor content={block.content} onChange={(content) => setBlockContent(block.id, content)} />
+          </div>
         </div>
       ))}
     </div>

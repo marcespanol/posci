@@ -101,7 +101,7 @@
 }
 
 .leftRail {
-  top: 6.1rem;
+  top: 20rem;
   left: 0.75rem;
   display: grid;
   gap: 0.45rem;
@@ -155,7 +155,7 @@
 .canvasViewport {
   position: absolute;
   inset: 0;
-  padding: 4.2rem 1rem 1rem 1rem;
+  /* padding: 4.2rem 1rem 1rem 1rem; */
 }
 
 .canvasViewport > * {

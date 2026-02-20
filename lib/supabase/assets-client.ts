@@ -11,9 +11,28 @@ export interface UploadedPosterAsset {
 }
 
 const SIGNED_URL_TTL_SECONDS = 60 * 60 * 24 * 365 * 10;
+const configuredBucket = process.env.NEXT_PUBLIC_SUPABASE_POSTER_ASSETS_BUCKET?.trim();
+const BUCKET_CANDIDATES = configuredBucket
+  ? [configuredBucket]
+  : ["poster-assets", "poster_assets"];
 
 const sanitizeFileName = (name: string): string => {
   return name.replace(/[^a-zA-Z0-9._-]/g, "-").toLowerCase();
+};
+
+const extensionFromMime = (mimeType: string): string => {
+  switch (mimeType) {
+    case "image/jpeg":
+      return "jpg";
+    case "image/png":
+      return "png";
+    case "image/webp":
+      return "webp";
+    case "image/gif":
+      return "gif";
+    default:
+      return "bin";
+  }
 };
 
 export const uploadPosterAsset = async (posterId: string, file: File): Promise<UploadedPosterAsset> => {
@@ -29,16 +48,41 @@ export const uploadPosterAsset = async (posterId: string, file: File): Promise<U
   }
 
   const assetId = crypto.randomUUID();
-  const safeName = sanitizeFileName(file.name || "image");
-  const storagePath = `${user.id}/${posterId}/${assetId}-${safeName}`;
+  const mimeType = file.type || "application/octet-stream";
+  const baseName =
+    sanitizeFileName(file.name || `image.${extensionFromMime(mimeType)}`) || `image.${extensionFromMime(mimeType)}`;
+  const primaryPath = `${user.id}/${posterId}/${assetId}-${baseName}`;
+  const secondaryPath = `${user.id}/${posterId}/${assetId}/${baseName}`;
+  const candidatePaths = [primaryPath, secondaryPath];
 
-  const { error: uploadError } = await supabase.storage.from("poster-assets").upload(storagePath, file, {
-    upsert: false,
-    contentType: file.type || "application/octet-stream"
-  });
+  let storagePath = primaryPath;
+  let bucketName = BUCKET_CANDIDATES[0];
+  let uploadErrorMessage: string | null = null;
 
-  if (uploadError) {
-    throw new Error(`Upload failed: ${uploadError.message}`);
+  for (const candidateBucket of BUCKET_CANDIDATES) {
+    for (const candidatePath of candidatePaths) {
+      const { error: uploadError } = await supabase.storage.from(candidateBucket).upload(candidatePath, file, {
+        upsert: false,
+        contentType: mimeType
+      });
+
+      if (!uploadError) {
+        bucketName = candidateBucket;
+        storagePath = candidatePath;
+        uploadErrorMessage = null;
+        break;
+      }
+
+      uploadErrorMessage = uploadError.message;
+    }
+
+    if (!uploadErrorMessage) {
+      break;
+    }
+  }
+
+  if (uploadErrorMessage) {
+    throw new Error(`Upload failed: ${uploadErrorMessage}`);
   }
 
   const { error: insertError } = await supabase.from("poster_assets").insert({
@@ -46,7 +90,7 @@ export const uploadPosterAsset = async (posterId: string, file: File): Promise<U
     user_id: user.id,
     poster_id: posterId,
     storage_path: storagePath,
-    mime_type: file.type || "application/octet-stream",
+    mime_type: mimeType,
     size_bytes: file.size
   });
 
@@ -55,7 +99,7 @@ export const uploadPosterAsset = async (posterId: string, file: File): Promise<U
   }
 
   const { data: signed, error: signedError } = await supabase.storage
-    .from("poster-assets")
+    .from(bucketName)
     .createSignedUrl(storagePath, SIGNED_URL_TTL_SECONDS);
 
   if (signedError || !signed?.signedUrl) {
@@ -66,7 +110,7 @@ export const uploadPosterAsset = async (posterId: string, file: File): Promise<U
     assetId,
     storagePath,
     signedUrl: signed.signedUrl,
-    mimeType: file.type || "application/octet-stream",
+    mimeType,
     sizeBytes: file.size
   };
 };

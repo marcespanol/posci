@@ -5,27 +5,29 @@ import styles from "@/components/editor/menus/content-controls-menu.module.css";
 interface ContentControlsMenuProps {
   columnCount: number;
   canRemoveColumn: boolean;
-  canRemoveSegment: boolean;
+  rowCount: number;
+  canAddRow: boolean;
+  canRemoveRow: boolean;
   onAddColumn: () => void;
   onRemoveSelectedColumn: () => void;
-  onAddSegment: () => void;
-  onRemoveSelectedSegment: () => void;
+  onAddRow: () => void;
+  onRemoveRow: () => void;
+  onAddImage: () => void;
   onAddFloatingParagraph: () => void;
-  onAddImageBlock: () => void;
-  imageBlockDisabled: boolean;
 }
 
 export default function ContentControlsMenu({
   columnCount,
   canRemoveColumn,
-  canRemoveSegment,
+  rowCount,
+  canAddRow,
+  canRemoveRow,
   onAddColumn,
   onRemoveSelectedColumn,
-  onAddSegment,
-  onRemoveSelectedSegment,
-  onAddFloatingParagraph,
-  onAddImageBlock,
-  imageBlockDisabled
+  onAddRow,
+  onRemoveRow,
+  onAddImage,
+  onAddFloatingParagraph
 }: ContentControlsMenuProps) {
   return (
     <div className={styles.menu}>
@@ -35,19 +37,20 @@ export default function ContentControlsMenu({
       <button type="button" className={styles.button} onClick={onRemoveSelectedColumn} disabled={!canRemoveColumn}>
         Remove column
       </button>
-      <button type="button" className={styles.button} onClick={onAddSegment}>
-        Add segment
-      </button>
-      <button type="button" className={styles.button} onClick={onRemoveSelectedSegment} disabled={!canRemoveSegment}>
-        Remove segment
-      </button>
       <button type="button" className={styles.button} onClick={onAddFloatingParagraph}>
         Add floating
       </button>
-      <button type="button" className={styles.button} onClick={onAddImageBlock} disabled={imageBlockDisabled}>
-        Add image block
+      <button type="button" className={styles.button} onClick={onAddImage}>
+        Add image
       </button>
       <p className={styles.meta}>Columns {columnCount}/5</p>
+      <button type="button" className={styles.button} onClick={onAddRow} disabled={!canAddRow}>
+        Add row
+      </button>
+      <button type="button" className={styles.button} onClick={onRemoveRow} disabled={!canRemoveRow}>
+        Remove row
+      </button>
+      <p className={styles.meta}>Rows {rowCount}/5</p>
     </div>
   );
 }

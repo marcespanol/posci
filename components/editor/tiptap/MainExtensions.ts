@@ -1,11 +1,11 @@
 import { Node } from "@tiptap/core";
 import Bold from "@tiptap/extension-bold";
 import Heading from "@tiptap/extension-heading";
-import Image from "@tiptap/extension-image";
 import Italic from "@tiptap/extension-italic";
 import Paragraph from "@tiptap/extension-paragraph";
 import Text from "@tiptap/extension-text";
 import Underline from "@tiptap/extension-underline";
+import { ResizableImage } from "@/components/editor/tiptap/ResizableImage";
 
 export const MainDocument = Node.create({
   name: "doc",
@@ -13,7 +13,7 @@ export const MainDocument = Node.create({
   content: "block+"
 });
 
-export const InlineImage = Image.extend({
+export const InlineImage = ResizableImage.extend({
   name: "inlineImage",
   group: "inline",
   inline: true,
@@ -42,6 +42,6 @@ export const mainExtensions = [
   Bold,
   Italic,
   Underline,
-  Image,
-  InlineImage
+  InlineImage,
+  ResizableImage
 ];

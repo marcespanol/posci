@@ -9,10 +9,12 @@ import HeaderFooterEditors from "@/components/editor/HeaderFooterEditors";
 import MainBlocksEditor from "@/components/editor/MainBlocksEditor";
 import DownloadMenu from "@/components/editor/menus/DownloadMenu";
 import GeneralOptionsMenu from "@/components/editor/menus/GeneralOptionsMenu";
+import { downloadPdfFromPngDataUrl } from "@/lib/poster/export-pdf";
+import { downloadPosterElementAsPng, renderPosterElementToPngDataUrl } from "@/lib/poster/export-png";
 import type { PosterDoc } from "@/lib/poster/types";
 import { usePosterEditorStore } from "@/lib/store/poster-store";
 
-type LeftPanelMode = "text" | "theme" | "layout";
+type LeftPanelMode = "text" | "theme" | "layout" | null;
 
 interface EditorClientProps {
   posterId: string;
@@ -49,12 +51,19 @@ export default function EditorClient({ posterId, updatedAt, initialDoc }: Editor
   const resetPoster = usePosterEditorStore((state) => state.resetPoster);
   const setMetaTitle = usePosterEditorStore((state) => state.setMetaTitle);
   const markSaved = usePosterEditorStore((state) => state.markSaved);
+  const undo = usePosterEditorStore((state) => state.undo);
+  const redo = usePosterEditorStore((state) => state.redo);
+  const canUndo = usePosterEditorStore((state) => state.canUndo);
+  const canRedo = usePosterEditorStore((state) => state.canRedo);
 
-  const [leftPanelMode, setLeftPanelMode] = useState<LeftPanelMode>("text");
+  const [leftPanelMode, setLeftPanelMode] = useState<LeftPanelMode>(null);
+
+  const toggleLeftPanelMode = (mode: Exclude<LeftPanelMode, null>) => {
+    setLeftPanelMode((current) => (current === mode ? null : mode));
+  };
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [lastSavedAt, setLastSavedAt] = useState<string>(updatedAt);
-  const [notice, setNotice] = useState<string | null>(null);
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latestDocRef = useRef<PosterDoc | null>(null);
@@ -63,6 +72,7 @@ export default function EditorClient({ posterId, updatedAt, initialDoc }: Editor
   const lastSaveStartedAtRef = useRef<number>(0);
   const inFlightSaveRef = useRef(false);
   const queuedSaveRef = useRef(false);
+  const initializedPosterIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     initializePoster({ posterId, doc: initialDoc });
@@ -70,6 +80,7 @@ export default function EditorClient({ posterId, updatedAt, initialDoc }: Editor
     latestHashRef.current = initialHash;
     lastSavedHashRef.current = initialHash;
     latestDocRef.current = initialDoc;
+    initializedPosterIdRef.current = posterId;
 
     return () => {
       if (saveTimerRef.current) {
@@ -77,8 +88,11 @@ export default function EditorClient({ posterId, updatedAt, initialDoc }: Editor
       }
 
       resetPoster();
+      initializedPosterIdRef.current = null;
     };
-  }, [initialDoc, initializePoster, posterId, resetPoster]);
+    // initialize once per mounted editor session
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (!doc) {
@@ -104,6 +118,43 @@ export default function EditorClient({ posterId, updatedAt, initialDoc }: Editor
       window.removeEventListener("beforeunload", onBeforeUnload);
     };
   }, [isDirty]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const usesCommand = event.metaKey || event.ctrlKey;
+      if (!usesCommand || event.altKey) {
+        return;
+      }
+
+      const key = event.key.toLowerCase();
+      const isUndo = key === "z" && !event.shiftKey;
+      const isRedo = (key === "z" && event.shiftKey) || key === "y";
+
+      if (isUndo) {
+        if (!canUndo) {
+          return;
+        }
+
+        event.preventDefault();
+        undo();
+        return;
+      }
+
+      if (isRedo) {
+        if (!canRedo) {
+          return;
+        }
+
+        event.preventDefault();
+        redo();
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [canRedo, canUndo, redo, undo]);
 
   const persistLatest = useCallback(async () => {
     const activeDoc = latestDocRef.current;
@@ -193,20 +244,6 @@ export default function EditorClient({ posterId, updatedAt, initialDoc }: Editor
     return isDirty ? "Unsaved changes" : "Saved";
   }, [isDirty, isSaving, saveError]);
 
-  useEffect(() => {
-    if (!notice) {
-      return;
-    }
-
-    const timeoutId = window.setTimeout(() => {
-      setNotice(null);
-    }, 4500);
-
-    return () => {
-      window.clearTimeout(timeoutId);
-    };
-  }, [notice]);
-
   if (!doc) {
     return (
       <main className={styles.page}>
@@ -243,13 +280,46 @@ export default function EditorClient({ posterId, updatedAt, initialDoc }: Editor
 
             void persistLatest();
           }}
-          onExport={() => {
-            const exportAfterSave = async () => {
-              await persistLatest();
-              window.open(`/editor/${posterId}/print?autoprint=1`, "_blank", "noopener,noreferrer");
+          onExportPng={() => {
+            const exportPngAfterSave = async () => {
+              try {
+                await persistLatest();
+                const artboard = document.querySelector<HTMLElement>("[data-poster-artboard='true']");
+                if (!artboard) {
+                  setSaveError("Could not find poster artboard to export.");
+                  return;
+                }
+
+                const slug = doc.meta.title.trim().replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "") || "poster";
+                await downloadPosterElementAsPng(artboard, `${slug}.png`);
+              } catch (error) {
+                const message = error instanceof Error ? error.message : "Failed to export poster";
+                setSaveError(message);
+              }
             };
 
-            void exportAfterSave();
+            void exportPngAfterSave();
+          }}
+          onExportPdf={() => {
+            const exportPdfAfterSave = async () => {
+              try {
+                await persistLatest();
+                const artboard = document.querySelector<HTMLElement>("[data-poster-artboard='true']");
+                if (!artboard) {
+                  setSaveError("Could not find poster artboard to export.");
+                  return;
+                }
+
+                const dataUrl = await renderPosterElementToPngDataUrl(artboard);
+                const slug = doc.meta.title.trim().replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "") || "poster";
+                await downloadPdfFromPngDataUrl(dataUrl, `${slug}.pdf`);
+              } catch (error) {
+                const message = error instanceof Error ? error.message : "Failed to export poster";
+                setSaveError(message);
+              }
+            };
+
+            void exportPdfAfterSave();
           }}
           saving={isSaving}
           saveDisabled={!isDirty && !saveError}
@@ -260,14 +330,14 @@ export default function EditorClient({ posterId, updatedAt, initialDoc }: Editor
       <div className={styles.topRightMeta}>
         <span className={styles.statusMeta}>Last save {formatDate(lastSavedAt)}</span>
         {saveError ? <span className={styles.errorMeta}>{saveError}</span> : null}
-        {notice ? <span className={styles.errorMeta}>{notice}</span> : null}
       </div>
 
       <aside className={styles.leftRail}>
         <button
           type="button"
           className={`${styles.railButton} ${leftPanelMode === "text" ? styles.railButtonActive : ""}`}
-          onClick={() => setLeftPanelMode("text")}
+          onClick={() => toggleLeftPanelMode("text")}
+          aria-pressed={leftPanelMode === "text"}
           aria-label="Text tools"
           title="Text tools"
         >
@@ -276,7 +346,8 @@ export default function EditorClient({ posterId, updatedAt, initialDoc }: Editor
         <button
           type="button"
           className={`${styles.railButton} ${leftPanelMode === "theme" ? styles.railButtonActive : ""}`}
-          onClick={() => setLeftPanelMode("theme")}
+          onClick={() => toggleLeftPanelMode("theme")}
+          aria-pressed={leftPanelMode === "theme"}
           aria-label="Theme tools"
           title="Theme tools"
         >
@@ -285,7 +356,8 @@ export default function EditorClient({ posterId, updatedAt, initialDoc }: Editor
         <button
           type="button"
           className={`${styles.railButton} ${leftPanelMode === "layout" ? styles.railButtonActive : ""}`}
-          onClick={() => setLeftPanelMode("layout")}
+          onClick={() => toggleLeftPanelMode("layout")}
+          aria-pressed={leftPanelMode === "layout"}
           aria-label="Layout tools"
           title="Layout tools"
         >
@@ -293,28 +365,30 @@ export default function EditorClient({ posterId, updatedAt, initialDoc }: Editor
         </button>
       </aside>
 
-      <section className={styles.leftPanel}>
-        {leftPanelMode === "text" ? (
-          <HeaderFooterEditors />
-        ) : null}
+      {leftPanelMode ? (
+        <section className={styles.leftPanel}>
+          {leftPanelMode === "text" ? (
+            <HeaderFooterEditors />
+          ) : null}
 
-        {leftPanelMode === "theme" ? (
-          <div className={styles.panelGroup}>
-            <h3 className={styles.panelTitle}>Theme</h3>
-            <p className={styles.panelText}>Typography and color presets will be added in the next UI ticket.</p>
-          </div>
-        ) : null}
+          {leftPanelMode === "theme" ? (
+            <div className={styles.panelGroup}>
+              <h3 className={styles.panelTitle}>Theme</h3>
+              <p className={styles.panelText}>Typography and color presets will be added in the next UI ticket.</p>
+            </div>
+          ) : null}
 
-        {leftPanelMode === "layout" ? (
-          <div className={styles.panelGroup}>
-            <h3 className={styles.panelTitle}>Layout</h3>
-            <p className={styles.panelText}>Orientation and size controls are scheduled for the upcoming controls pass.</p>
-          </div>
-        ) : null}
-      </section>
+          {leftPanelMode === "layout" ? (
+            <div className={styles.panelGroup}>
+              <h3 className={styles.panelTitle}>Layout</h3>
+              <p className={styles.panelText}>Orientation and size controls are scheduled for the upcoming controls pass.</p>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
 
       <section className={styles.canvasViewport}>
-        <MainBlocksEditor posterId={posterId} fullscreen onNotice={setNotice} />
+        <MainBlocksEditor fullscreen />
       </section>
     </main>
   );

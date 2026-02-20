@@ -1,6 +1,8 @@
 .wrapper {
-  display: grid;
-  gap: 0.42rem;
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  width: 100%;
 }
 
 .bubble {
@@ -30,15 +32,18 @@
 }
 
 .editor {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: #fff;
-  padding: 0.6rem 0.7rem;
-  min-height: 130px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0.2rem 0.2rem 0.15rem;
+  min-height: 120px;
+  flex: 1;
 }
 
 .editor :global(.ProseMirror) {
   outline: none;
+  min-height: 120px;
+  cursor: text;
 }
 
 .editor :global(.ProseMirror p) {
@@ -63,18 +68,33 @@
   border-radius: 6px;
 }
 
-.inlineTools {
-  display: flex;
-  gap: 0.4rem;
-  flex-wrap: wrap;
+.editor :global(.tiptap-resizable-image) {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  line-height: 0;
 }
 
-.toolGhost {
-  border: 1px solid #d5deea;
+.editor :global(.tiptap-resizable-image img) {
+  display: block;
+  max-width: 100%;
+  border-radius: 6px;
+}
+
+.editor :global(.tiptap-resizable-image-handle) {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  width: 12px;
+  height: 12px;
+  border: 1px solid #2c5b93;
+  border-radius: 3px;
   background: #fff;
-  color: #304862;
-  border-radius: 8px;
-  padding: 0.25rem 0.48rem;
-  font-size: 0.74rem;
-  cursor: pointer;
+  cursor: nwse-resize;
+  opacity: 0;
+}
+
+.editor :global(.tiptap-resizable-image:hover .tiptap-resizable-image-handle),
+.editor :global(.tiptap-resizable-image-selected .tiptap-resizable-image-handle) {
+  opacity: 1;
 }

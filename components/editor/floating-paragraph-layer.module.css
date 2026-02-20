@@ -7,21 +7,53 @@
 .block {
   position: absolute;
   pointer-events: auto;
-  display: inline-grid;
-  gap: 0.35rem;
+  display: inline-block;
+  padding: 0.2rem;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  cursor: move;
+  background-color: white;
 }
 
-.dragHandle {
-  width: 34px;
-  height: 14px;
-  border: 1px solid #b8cadf;
-  border-radius: 999px;
-  background: #f2f7fd;
-  color: #355275;
-  font-size: 0.65rem;
-  line-height: 1;
-  display: inline-grid;
+.block:hover,
+.block:focus-within,
+.blockActive {
+  border-color: #c9d8e8;
+}
+
+.blockActive {
+  z-index: 20;
+}
+
+.editorShell {
+  cursor: text;
+}
+
+.removeButton {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.4rem;
+  width: 1rem;
+  height: 1rem;
+  border: 0;
+  background: transparent;
+  color: #dc2626;
+  display: grid;
   place-items: center;
-  cursor: move;
-  user-select: none;
+  padding: 0;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+  z-index: 25;
+}
+
+.block:hover .removeButton,
+.block:focus-within .removeButton,
+.blockActive .removeButton {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.removeButton:hover {
+  color: #b91c1c;
 }

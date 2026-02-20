@@ -1,34 +1,25 @@
 "use client";
 
-import { Fragment, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import Image from "next/image";
+import { Fragment, useEffect, useRef, useState } from "react";
+import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { TransformComponent, TransformWrapper } from "react-zoom-pan-pinch";
 
 import FloatingParagraphLayer from "@/components/editor/FloatingParagraphLayer";
 import ContentControlsMenu from "@/components/editor/menus/ContentControlsMenu";
 import styles from "@/components/editor/main-blocks-editor.module.css";
 import MainRichTextEditor from "@/components/editor/tiptap/MainRichTextEditor";
-import type { PosterFloatingParagraphBlock } from "@/lib/poster/types";
+import { renderTipTapDocToHtml } from "@/lib/poster/render-html";
+import type { PosterFloatingParagraphBlock, TipTapJsonContent } from "@/lib/poster/types";
 import { uploadPosterAsset } from "@/lib/supabase/assets-client";
 import { usePosterEditorStore } from "@/lib/store/poster-store";
 
-interface ResizeSession {
-  leftColumnId: string;
-  rightColumnId: string;
-  startX: number;
-  leftStartRatio: number;
-  rightStartRatio: number;
-  pairStartRatio: number;
-  containerWidth: number;
-}
-
 interface MainBlocksEditorProps {
   fullscreen?: boolean;
-  posterId: string;
-  onNotice?: (message: string) => void;
 }
 
-const MIN_COLUMN_RATIO = 0.12;
+const MIN_COLUMN_SIZE_PERCENT = 12;
+const MIN_ROW_SIZE_PERCENT = 8;
+
 const isPanLockTarget = (target: EventTarget | null): boolean => {
   if (!(target instanceof HTMLElement)) {
     return false;
@@ -37,104 +28,25 @@ const isPanLockTarget = (target: EventTarget | null): boolean => {
   return Boolean(target.closest("button,input,textarea,select,[contenteditable='true'],a,label,.no-pan"));
 };
 
-export default function MainBlocksEditor({ fullscreen = false, posterId, onNotice }: MainBlocksEditorProps) {
+export default function MainBlocksEditor({ fullscreen = false }: MainBlocksEditorProps) {
   const doc = usePosterEditorStore((state) => state.doc);
+  const posterId = usePosterEditorStore((state) => state.posterId);
   const setBlockContent = usePosterEditorStore((state) => state.setBlockContent);
   const addColumn = usePosterEditorStore((state) => state.addColumn);
   const removeColumn = usePosterEditorStore((state) => state.removeColumn);
-  const setAdjacentColumnRatios = usePosterEditorStore((state) => state.setAdjacentColumnRatios);
+  const ensureColumnHasTextBlock = usePosterEditorStore((state) => state.ensureColumnHasTextBlock);
+  const setColumnLayoutRatios = usePosterEditorStore((state) => state.setColumnLayoutRatios);
+  const setColumnSegmentLayoutRatios = usePosterEditorStore((state) => state.setColumnSegmentLayoutRatios);
   const addSegment = usePosterEditorStore((state) => state.addSegment);
   const removeSegment = usePosterEditorStore((state) => state.removeSegment);
   const addFloatingParagraph = usePosterEditorStore((state) => state.addFloatingParagraph);
-  const addImageBlockToSegment = usePosterEditorStore((state) => state.addImageBlockToSegment);
 
-  const columnsRowRef = useRef<HTMLDivElement | null>(null);
   const zoomViewportRef = useRef<HTMLDivElement | null>(null);
-  const resizeSessionRef = useRef<ResizeSession | null>(null);
-  const [isResizing, setIsResizing] = useState(false);
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
   const [panDisabled, setPanDisabled] = useState(false);
-  const [isUploadingImageBlock, setIsUploadingImageBlock] = useState(false);
+  const [spacePanMode, setSpacePanMode] = useState(false);
   const [selectedColumnId, setSelectedColumnId] = useState<string | null>(null);
   const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(null);
-
-  if (!doc) {
-    return null;
-  }
-
-  const columnCount = doc.sections.main.columnIds.length;
-  const floatingBlocks = Object.values(doc.blocks).filter(
-    (block): block is PosterFloatingParagraphBlock => block.type === "floatingParagraph"
-  );
-  const activeColumnId = selectedColumnId ?? doc.sections.main.columnIds[0] ?? null;
-  const activeColumn = activeColumnId ? doc.sections.main.columns[activeColumnId] : null;
-
-  const endResize = () => {
-    resizeSessionRef.current = null;
-    setIsResizing(false);
-    document.body.style.removeProperty("user-select");
-    document.body.style.removeProperty("cursor");
-
-    window.removeEventListener("pointermove", onWindowPointerMove);
-    window.removeEventListener("pointerup", onWindowPointerUp);
-  };
-
-  const onWindowPointerMove = (event: PointerEvent) => {
-    const session = resizeSessionRef.current;
-    if (!session) {
-      return;
-    }
-
-    const deltaX = event.clientX - session.startX;
-    const deltaRatio = deltaX / session.containerWidth;
-
-    const minLeft = MIN_COLUMN_RATIO;
-    const minRight = MIN_COLUMN_RATIO;
-    const nextLeft = Math.min(
-      session.pairStartRatio - minRight,
-      Math.max(minLeft, session.leftStartRatio + deltaRatio)
-    );
-    const nextRight = session.pairStartRatio - nextLeft;
-
-    setAdjacentColumnRatios(session.leftColumnId, session.rightColumnId, nextLeft, nextRight);
-  };
-
-  const onWindowPointerUp = () => {
-    endResize();
-  };
-
-  const beginResize = (event: ReactPointerEvent<HTMLButtonElement>, leftColumnId: string, rightColumnId: string) => {
-    const row = columnsRowRef.current;
-    const leftColumn = doc.sections.main.columns[leftColumnId];
-    const rightColumn = doc.sections.main.columns[rightColumnId];
-    if (!row || !leftColumn || !rightColumn) {
-      return;
-    }
-
-    const width = row.getBoundingClientRect().width;
-    if (width <= 0) {
-      return;
-    }
-
-    event.preventDefault();
-    event.currentTarget.setPointerCapture(event.pointerId);
-
-    resizeSessionRef.current = {
-      leftColumnId,
-      rightColumnId,
-      startX: event.clientX,
-      leftStartRatio: leftColumn.widthRatio,
-      rightStartRatio: rightColumn.widthRatio,
-      pairStartRatio: leftColumn.widthRatio + rightColumn.widthRatio,
-      containerWidth: width
-    };
-
-    setIsResizing(true);
-    document.body.style.userSelect = "none";
-    document.body.style.cursor = "col-resize";
-
-    window.addEventListener("pointermove", onWindowPointerMove);
-    window.addEventListener("pointerup", onWindowPointerUp, { once: true });
-  };
 
   const syncPanWithActiveElement = () => {
     const active = document.activeElement;
@@ -152,31 +64,150 @@ export default function MainBlocksEditor({ fullscreen = false, posterId, onNotic
     setPanDisabled(isPanLockTarget(active));
   };
 
-  const uploadImageBlock = async () => {
-    if (!activeColumnId || !selectedSegmentId || isUploadingImageBlock) {
+  const columnIds = doc?.sections.main.columnIds;
+
+  useEffect(() => {
+    if (!columnIds) {
       return;
     }
 
-    const picker = document.createElement("input");
-    picker.type = "file";
-    picker.accept = "image/*";
-    picker.onchange = async () => {
-      const file = picker.files?.[0];
-      if (!file) {
+    columnIds.forEach((columnId) => {
+      ensureColumnHasTextBlock(columnId);
+    });
+  }, [columnIds, ensureColumnHasTextBlock]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.code !== "Space") {
         return;
       }
 
-      setIsUploadingImageBlock(true);
+      if (event.repeat) {
+        return;
+      }
+
+      setSpacePanMode(true);
+    };
+
+    const onKeyUp = (event: KeyboardEvent) => {
+      if (event.code !== "Space") {
+        return;
+      }
+
+      setSpacePanMode(false);
+    };
+
+    const onWindowBlur = () => {
+      setSpacePanMode(false);
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", onWindowBlur);
+
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", onWindowBlur);
+    };
+  }, []);
+
+  if (!doc) {
+    return null;
+  }
+
+  const columnCount = doc.sections.main.columnIds.length;
+  const artboardSizeClass =
+    doc.meta.sizePreset === "A1"
+      ? doc.meta.orientation === "landscape"
+        ? styles.artboardA1Landscape
+        : styles.artboardA1Portrait
+      : doc.meta.orientation === "landscape"
+        ? styles.artboardScreenLandscape
+        : styles.artboardScreenPortrait;
+  const artboardColorClass = doc.meta.colorTheme === "GREEN" ? styles.themeGreen : styles.themeBlue;
+  const artboardTypeClass =
+    doc.meta.typographyTheme === "SANS_HEADERS_MONO_BODY" ? styles.typeSansMono : styles.typeSerifSans;
+  const floatingBlocks = Object.values(doc.blocks).filter(
+    (block): block is PosterFloatingParagraphBlock => block.type === "floatingParagraph"
+  );
+  const activeColumnId = selectedColumnId ?? doc.sections.main.columnIds[0] ?? null;
+  const activeColumn = activeColumnId ? doc.sections.main.columns[activeColumnId] : null;
+  const activeRowCount = activeColumn?.segments.length ?? 0;
+
+  const getSegmentTextBlockId = (blockIds: string[]): string | null => {
+    for (const blockId of blockIds) {
+      const block = doc.blocks[blockId];
+      if (block?.type === "text") {
+        return blockId;
+      }
+    }
+
+    return null;
+  };
+
+  const appendImageToDoc = (content: TipTapJsonContent, src: string, alt: string): TipTapJsonContent => {
+    const currentBlocks = Array.isArray(content.content) ? [...content.content] : [];
+    currentBlocks.push({
+      type: "image",
+      attrs: {
+        src,
+        alt,
+        width: 520
+      }
+    });
+
+    return {
+      ...content,
+      type: "doc",
+      content: currentBlocks
+    };
+  };
+
+  const getTargetTextBlockId = (): string | null => {
+    const targetColumnId = activeColumnId ?? doc.sections.main.columnIds[0] ?? null;
+    if (!targetColumnId) {
+      return null;
+    }
+
+    const column = doc.sections.main.columns[targetColumnId];
+    if (!column) {
+      return null;
+    }
+
+    const segment =
+      (selectedSegmentId ? column.segments.find((item) => item.id === selectedSegmentId) : null) ?? column.segments[0];
+    if (!segment) {
+      return null;
+    }
+
+    return getSegmentTextBlockId(segment.blockIds);
+  };
+
+  const onImageFilePicked = (file: File) => {
+    if (!posterId) {
+      return;
+    }
+
+    const targetTextBlockId = getTargetTextBlockId();
+    if (!targetTextBlockId) {
+      return;
+    }
+
+    const targetBlock = doc.blocks[targetTextBlockId];
+    if (!targetBlock || targetBlock.type !== "text") {
+      return;
+    }
+
+    void (async () => {
       try {
         const uploaded = await uploadPosterAsset(posterId, file);
-        addImageBlockToSegment(activeColumnId, selectedSegmentId, uploaded.assetId, uploaded.signedUrl, file.name);
+        const nextContent = appendImageToDoc(targetBlock.content, uploaded.signedUrl, file.name || "Uploaded image");
+        setBlockContent(targetTextBlockId, nextContent);
       } catch (error) {
-        onNotice?.(error instanceof Error ? error.message : "Image upload failed");
-      } finally {
-        setIsUploadingImageBlock(false);
+        console.error("Add image failed", error);
       }
-    };
-    picker.click();
+    })();
   };
 
   return (
@@ -185,10 +216,10 @@ export default function MainBlocksEditor({ fullscreen = false, posterId, onNotic
       {!fullscreen ? <p className={styles.helper}>Supports heading, paragraph, image block, and inline images.</p> : null}
       {!fullscreen ? (
         <div className={styles.controls}>
-          <button type="button" className={styles.controlButton} onClick={addColumn} disabled={columnCount >= 5 || isResizing}>
+          <button type="button" className={styles.controlButton} onClick={addColumn} disabled={columnCount >= 5}>
             Add column
           </button>
-          <button type="button" className={styles.controlButton} onClick={addFloatingParagraph} disabled={isResizing}>
+          <button type="button" className={styles.controlButton} onClick={addFloatingParagraph}>
             Add floating paragraph
           </button>
           <p className={styles.counter}>Columns: {columnCount} / 5</p>
@@ -196,11 +227,20 @@ export default function MainBlocksEditor({ fullscreen = false, posterId, onNotic
       ) : null}
 
       <TransformWrapper
-        minScale={0.45}
+        minScale={0.1}
         initialScale={1}
         maxScale={2.6}
-        centerOnInit={false}
-        panning={{ disabled: panDisabled || isResizing, velocityDisabled: true }}
+        centerOnInit
+        centerZoomedOut
+        panning={{
+          disabled: spacePanMode ? false : panDisabled,
+          velocityDisabled: true,
+          allowLeftClickPan: spacePanMode,
+          allowMiddleClickPan: true,
+          allowRightClickPan: false,
+          activationKeys: [],
+          excluded: spacePanMode ? ["input", "textarea", "select", "button", "a"] : ["input", "textarea", "select", "button", "a", "ProseMirror"]
+        }}
         wheel={{ step: 0.08 }}
         doubleClick={{ disabled: true }}
       >
@@ -220,7 +260,7 @@ export default function MainBlocksEditor({ fullscreen = false, posterId, onNotic
             </div>
 
             <div
-              className={styles.zoomViewport}
+              className={`${styles.zoomViewport} ${spacePanMode ? styles.spacePanMode : ""}`}
               ref={zoomViewportRef}
               onPointerDownCapture={(event) => {
                 setPanDisabled(isPanLockTarget(event.target));
@@ -237,95 +277,107 @@ export default function MainBlocksEditor({ fullscreen = false, posterId, onNotic
             >
               <TransformComponent wrapperClass={styles.transformWrapper} contentClass={styles.transformContent}>
                 <div className={styles.canvasArea}>
-                  <div className={styles.columnsRow} ref={columnsRowRef}>
-                    {doc.sections.main.columnIds.map((columnId, columnIndex) => {
-                      const column = doc.sections.main.columns[columnId];
-                      const nextColumnId = doc.sections.main.columnIds[columnIndex + 1];
-                      if (!column) {
-                        return null;
-                      }
+                  <article
+                    data-poster-artboard="true"
+                    className={`${styles.artboard} ${artboardSizeClass} ${artboardColorClass} ${artboardTypeClass}`}
+                  >
+                    <header
+                      className={`${styles.artboardHeader} ${styles.richText}`}
+                      dangerouslySetInnerHTML={{ __html: renderTipTapDocToHtml(doc.sections.header.content) }}
+                    />
 
-                      return (
-                        <Fragment key={column.id}>
-                          <article
-                            className={`${styles.column} ${selectedColumnId === column.id ? styles.columnActive : ""}`}
-                            style={{ flexGrow: column.widthRatio }}
-                            onPointerDown={() => {
-                              setSelectedColumnId(column.id);
-                              setSelectedSegmentId(null);
-                            }}
-                          >
-                            <div className={styles.columnHeader}>
-                              <p className={styles.segmentMeta}>Column {columnIndex + 1}</p>
-                            </div>
+                    <section className={styles.artboardMain}>
+                      <PanelGroup
+                        direction="horizontal"
+                        className={styles.columnsPanelGroup}
+                        onLayout={(sizes) => {
+                          setColumnLayoutRatios(doc.sections.main.columnIds, sizes);
+                        }}
+                      >
+                        {doc.sections.main.columnIds.map((columnId, columnIndex) => {
+                          const column = doc.sections.main.columns[columnId];
+                          if (!column) {
+                            return null;
+                          }
 
-                            {column.segments.map((segment, segmentIndex) => (
-                              <div
-                                key={segment.id}
-                                className={`${styles.segment} ${selectedSegmentId === segment.id ? styles.segmentActive : ""}`}
-                                onPointerDown={(event) => {
-                                  event.stopPropagation();
-                                  setSelectedColumnId(column.id);
-                                  setSelectedSegmentId(segment.id);
-                                }}
+                          const segmentCount = column.segments.length;
+                          const segmentIds = column.segments.map((segment) => segment.id);
+
+                          return (
+                            <Fragment key={column.id}>
+                              <Panel
+                                defaultSize={Math.max(1, column.widthRatio * 100)}
+                                minSize={MIN_COLUMN_SIZE_PERCENT}
+                                className={styles.columnPanel}
                               >
-                                <div className={styles.columnHeader}>
-                                  <p className={styles.segmentMeta}>Segment {segmentIndex + 1}</p>
-                                </div>
+                                <article
+                                  className={`${styles.column} ${selectedColumnId === column.id ? styles.columnActive : ""}`}
+                                  onPointerDown={() => {
+                                    setSelectedColumnId(column.id);
+                                  }}
+                                >
+                                  <PanelGroup
+                                    direction="vertical"
+                                    className={styles.columnRows}
+                                    onLayout={(sizes) => {
+                                      setColumnSegmentLayoutRatios(column.id, segmentIds, sizes);
+                                    }}
+                                  >
+                                    {column.segments.map((segment, segmentIndex) => {
+                                      const textBlockId = getSegmentTextBlockId(segment.blockIds);
+                                      const textBlock = textBlockId ? doc.blocks[textBlockId] : null;
+                                      const defaultSize = (segment.heightRatio ?? 1 / Math.max(segmentCount, 1)) * 100;
 
-                                {segment.blockIds.map((blockId) => {
-                                  const block = doc.blocks[blockId];
-                                  if (!block) {
-                                    return null;
-                                  }
+                                      return (
+                                        <Fragment key={segment.id}>
+                                          <Panel defaultSize={Math.max(1, defaultSize)} minSize={MIN_ROW_SIZE_PERCENT}>
+                                            <section
+                                              className={styles.rowSegment}
+                                              onPointerDown={() => {
+                                                setSelectedColumnId(column.id);
+                                                setSelectedSegmentId(segment.id);
+                                              }}
+                                            >
+                                              <div className={styles.columnEditorHost}>
+                                                {!textBlockId || !textBlock || textBlock.type !== "text" ? (
+                                                  <div className={styles.emptyState}>No text block in this row.</div>
+                                                ) : (
+                                                  <MainRichTextEditor
+                                                    key={textBlock.id}
+                                                    content={textBlock.content}
+                                                    onChange={(content) => setBlockContent(textBlock.id, content)}
+                                                  />
+                                                )}
+                                              </div>
+                                            </section>
+                                          </Panel>
+                                          {segmentIndex < segmentCount - 1 ? (
+                                            <PanelResizeHandle className={`${styles.rowResizeHandle} ${styles.noPan}`} />
+                                          ) : null}
+                                        </Fragment>
+                                      );
+                                    })}
+                                  </PanelGroup>
+                                </article>
+                              </Panel>
+                              {columnIndex < doc.sections.main.columnIds.length - 1 ? (
+                                <PanelResizeHandle className={`${styles.resizeHandle} ${styles.noPan}`} />
+                              ) : null}
+                            </Fragment>
+                          );
+                        })}
+                      </PanelGroup>
 
-                                  if (block.type === "text") {
-                                    return (
-                                      <MainRichTextEditor
-                                        key={block.id}
-                                        posterId={posterId}
-                                        content={block.content}
-                                        onChange={(content) => setBlockContent(block.id, content)}
-                                        onError={onNotice}
-                                      />
-                                    );
-                                  }
+                      <FloatingParagraphLayer blocks={floatingBlocks} />
+                    </section>
 
-                                  if (block.type === "image") {
-                                    return (
-                                      <p key={block.id} className={styles.imagePlaceholder}>
-                                        <Image
-                                          className={styles.imagePreview}
-                                          src={block.src}
-                                          alt={block.alt}
-                                          width={1200}
-                                          height={800}
-                                        />
-                                        <span className={styles.imageCaption}>{block.alt}</span>
-                                      </p>
-                                    );
-                                  }
-
-                                  return null;
-                                })}
-                              </div>
-                            ))}
-                          </article>
-
-                          {nextColumnId ? (
-                            <button
-                              type="button"
-                              aria-label={`Resize between column ${columnIndex + 1} and ${columnIndex + 2}`}
-                              className={styles.resizeHandle}
-                              onPointerDown={(event) => beginResize(event, column.id, nextColumnId)}
-                            />
-                          ) : null}
-                        </Fragment>
-                      );
-                    })}
-                  </div>
-
-                  <FloatingParagraphLayer blocks={floatingBlocks} />
+                    {doc.meta.footerVisible ? (
+                      <footer
+                        className={`${styles.artboardFooter} ${styles.richText}`}
+                        dangerouslySetInnerHTML={{ __html: renderTipTapDocToHtml(doc.sections.footer.content) }}
+                      />
+                    ) : null}
+                  </article>
                 </div>
               </TransformComponent>
             </div>
@@ -333,7 +385,9 @@ export default function MainBlocksEditor({ fullscreen = false, posterId, onNotic
               <ContentControlsMenu
                 columnCount={columnCount}
                 canRemoveColumn={Boolean(activeColumnId) && columnCount > 1}
-                canRemoveSegment={(activeColumn?.segments.length ?? 0) > 1 && Boolean(selectedSegmentId)}
+                rowCount={activeRowCount}
+                canAddRow={Boolean(activeColumnId) && activeRowCount < 5}
+                canRemoveRow={Boolean(activeColumnId) && activeRowCount > 1}
                 onAddColumn={addColumn}
                 onRemoveSelectedColumn={() => {
                   if (!activeColumnId) {
@@ -342,31 +396,54 @@ export default function MainBlocksEditor({ fullscreen = false, posterId, onNotic
 
                   removeColumn(activeColumnId);
                   setSelectedColumnId(null);
-                  setSelectedSegmentId(null);
                 }}
-                onAddSegment={() => {
+                onAddRow={() => {
                   if (!activeColumnId) {
                     return;
                   }
 
                   addSegment(activeColumnId);
                 }}
-                onRemoveSelectedSegment={() => {
-                  if (!activeColumnId || !selectedSegmentId) {
+                onRemoveRow={() => {
+                  if (!activeColumnId) {
                     return;
                   }
 
-                  removeSegment(activeColumnId, selectedSegmentId);
-                  setSelectedSegmentId(null);
+                  const column = doc.sections.main.columns[activeColumnId];
+                  if (!column) {
+                    return;
+                  }
+
+                  const lastSegment = column.segments[column.segments.length - 1];
+                  if (!lastSegment) {
+                    return;
+                  }
+
+                  removeSegment(activeColumnId, lastSegment.id);
+                }}
+                onAddImage={() => {
+                  imageInputRef.current?.click();
                 }}
                 onAddFloatingParagraph={addFloatingParagraph}
-                onAddImageBlock={uploadImageBlock}
-                imageBlockDisabled={!activeColumnId || !selectedSegmentId || isUploadingImageBlock}
               />
             </div>
           </div>
         )}
       </TransformWrapper>
+      <input
+        ref={imageInputRef}
+        type="file"
+        accept="image/*"
+        hidden
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (file) {
+            onImageFilePicked(file);
+          }
+
+          event.target.value = "";
+        }}
+      />
     </section>
   );
 }
