@@ -7,7 +7,7 @@ import { useRef, type PointerEvent as ReactPointerEvent } from "react";
 const MIN_WIDTH = 80;
 const MAX_WIDTH = 2200;
 
-function ResizableImageView({ node, updateAttributes, selected }: NodeViewProps) {
+function ResizableImageView({ node, editor, getPos, selected }: NodeViewProps) {
   const imageRef = useRef<HTMLImageElement | null>(null);
   const attrs = node.attrs as {
     src: string;
@@ -26,19 +26,36 @@ function ResizableImageView({ node, updateAttributes, selected }: NodeViewProps)
     const naturalHeight = imageRef.current?.naturalHeight ?? 0;
     const ratio = naturalWidth > 0 && naturalHeight > 0 ? naturalWidth / naturalHeight : 0;
 
+    let pendingWidth = Math.round(startWidth);
+
     const onMove = (moveEvent: PointerEvent) => {
       const deltaX = moveEvent.clientX - startX;
       const nextWidth = Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, Math.round(startWidth + deltaX)));
+      pendingWidth = ratio > 0 ? nextWidth : Math.round(nextWidth);
 
-      updateAttributes({
-        src: attrs.src,
-        alt: attrs.alt ?? null,
-        title: attrs.title ?? null,
-        width: ratio > 0 ? nextWidth : Math.round(nextWidth)
-      });
+      if (imageRef.current) {
+        imageRef.current.style.width = `${pendingWidth}px`;
+      }
     };
 
     const onUp = () => {
+      const pos = typeof getPos === "function" ? getPos() : null;
+      if (typeof pos === "number") {
+        const currentNode = editor.state.doc.nodeAt(pos);
+        const domSrc = imageRef.current?.getAttribute("src") ?? imageRef.current?.currentSrc ?? attrs.src ?? null;
+        const domAlt = imageRef.current?.getAttribute("alt") ?? attrs.alt ?? null;
+        const nextAttrs = {
+          ...(currentNode?.attrs ?? node.attrs),
+          src: domSrc,
+          alt: domAlt,
+          title: attrs.title ?? null,
+          width: pendingWidth
+        };
+
+        const transaction = editor.state.tr.setNodeMarkup(pos, undefined, nextAttrs);
+        editor.view.dispatch(transaction);
+      }
+
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
     };

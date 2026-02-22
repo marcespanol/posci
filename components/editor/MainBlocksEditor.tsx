@@ -8,7 +8,7 @@ import FloatingParagraphLayer from "@/components/editor/FloatingParagraphLayer";
 import ContentControlsMenu from "@/components/editor/menus/ContentControlsMenu";
 import styles from "@/components/editor/main-blocks-editor.module.css";
 import MainRichTextEditor from "@/components/editor/tiptap/MainRichTextEditor";
-import { renderTipTapDocToHtml } from "@/lib/poster/render-html";
+import RichTextMarksEditor from "@/components/editor/tiptap/RichTextMarksEditor";
 import type { PosterFloatingParagraphBlock, TipTapJsonContent } from "@/lib/poster/types";
 import { uploadPosterAsset } from "@/lib/supabase/assets-client";
 import { usePosterEditorStore } from "@/lib/store/poster-store";
@@ -35,6 +35,9 @@ export default function MainBlocksEditor({ fullscreen = false }: MainBlocksEdito
   const addColumn = usePosterEditorStore((state) => state.addColumn);
   const removeColumn = usePosterEditorStore((state) => state.removeColumn);
   const ensureColumnHasTextBlock = usePosterEditorStore((state) => state.ensureColumnHasTextBlock);
+  const setHeaderContent = usePosterEditorStore((state) => state.setHeaderContent);
+  const setHeaderSubtitleContent = usePosterEditorStore((state) => state.setHeaderSubtitleContent);
+  const setFooterContent = usePosterEditorStore((state) => state.setFooterContent);
   const setColumnLayoutRatios = usePosterEditorStore((state) => state.setColumnLayoutRatios);
   const setColumnSegmentLayoutRatios = usePosterEditorStore((state) => state.setColumnSegmentLayoutRatios);
   const addSegment = usePosterEditorStore((state) => state.addSegment);
@@ -283,8 +286,21 @@ export default function MainBlocksEditor({ fullscreen = false }: MainBlocksEdito
                   >
                     <header
                       className={`${styles.artboardHeader} ${styles.richText}`}
-                      dangerouslySetInnerHTML={{ __html: renderTipTapDocToHtml(doc.sections.header.content) }}
-                    />
+                    >
+                      <RichTextMarksEditor
+                        content={doc.sections.header.content}
+                        onChange={setHeaderContent}
+                        variant="artboardHeader"
+                      />
+                      {(doc.meta.headerSubtitleVisible ?? true) && doc.sections.headerSubtitle ? (
+                        <RichTextMarksEditor
+                          content={doc.sections.headerSubtitle.content}
+                          onChange={setHeaderSubtitleContent}
+                          singleLine
+                          variant="artboardFooter"
+                        />
+                      ) : null}
+                    </header>
 
                     <section className={styles.artboardMain}>
                       <PanelGroup
@@ -374,8 +390,14 @@ export default function MainBlocksEditor({ fullscreen = false }: MainBlocksEdito
                     {doc.meta.footerVisible ? (
                       <footer
                         className={`${styles.artboardFooter} ${styles.richText}`}
-                        dangerouslySetInnerHTML={{ __html: renderTipTapDocToHtml(doc.sections.footer.content) }}
-                      />
+                      >
+                        <RichTextMarksEditor
+                          content={doc.sections.footer.content}
+                          onChange={setFooterContent}
+                          singleLine
+                          variant="artboardFooter"
+                        />
+                      </footer>
                     ) : null}
                   </article>
                 </div>

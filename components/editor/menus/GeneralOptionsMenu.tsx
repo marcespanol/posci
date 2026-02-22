@@ -13,6 +13,7 @@ export default function GeneralOptionsMenu() {
   const setColorTheme = usePosterEditorStore((state) => state.setColorTheme);
   const setOrientation = usePosterEditorStore((state) => state.setOrientation);
   const setSizePreset = usePosterEditorStore((state) => state.setSizePreset);
+  const toggleHeaderSubtitleVisible = usePosterEditorStore((state) => state.toggleHeaderSubtitleVisible);
   const toggleFooterVisible = usePosterEditorStore((state) => state.toggleFooterVisible);
 
   if (!doc) {
@@ -96,6 +97,13 @@ export default function GeneralOptionsMenu() {
           onClick={() => setSizePreset("SCREEN_X2")}
         >
           Screen x2
+        </button>
+      </div>
+
+      <div className={styles.row}>
+        <span className={styles.label}>Subtitle</span>
+        <button type="button" className={styles.button} onClick={toggleHeaderSubtitleVisible}>
+          {(doc.meta.headerSubtitleVisible ?? true) ? "Hide" : "Show"}
         </button>
       </div>
 

@@ -57,6 +57,105 @@ const createDefaultTextContent = (title?: string): TipTapJsonContent => ({
   ]
 });
 
+const createPlainTextDoc = (text: string): TipTapJsonContent => ({
+  type: "doc",
+  content: [
+    {
+      type: "paragraph",
+      content: text ? [{ type: "text", text }] : [{ type: "text", text: "" }]
+    }
+  ]
+});
+
+interface ImageNodeAttrs {
+  src?: string;
+  alt?: string;
+  title?: string;
+}
+
+const isTipTapImageNode = (node: TipTapJsonContent): boolean => {
+  return node.type === "image" || node.type === "inlineImage";
+};
+
+const collectImageAttrs = (node: TipTapJsonContent, output: ImageNodeAttrs[]): void => {
+  if (isTipTapImageNode(node)) {
+    output.push({
+      src: typeof node.attrs?.src === "string" ? node.attrs.src : undefined,
+      alt: typeof node.attrs?.alt === "string" ? node.attrs.alt : undefined,
+      title: typeof node.attrs?.title === "string" ? node.attrs.title : undefined
+    });
+  }
+
+  for (const child of node.content ?? []) {
+    collectImageAttrs(child, output);
+  }
+};
+
+const restoreMissingImageAttrs = (
+  nextNode: TipTapJsonContent,
+  previousAttrsByOrder: ImageNodeAttrs[],
+  state: { index: number }
+): TipTapJsonContent => {
+  let nextAttrs = nextNode.attrs;
+  let changed = false;
+
+  if (isTipTapImageNode(nextNode)) {
+    const previous = previousAttrsByOrder[state.index];
+    state.index += 1;
+
+    const nextSrc = typeof nextNode.attrs?.src === "string" ? nextNode.attrs.src : "";
+    const nextAlt = typeof nextNode.attrs?.alt === "string" ? nextNode.attrs.alt : "";
+    const nextTitle = typeof nextNode.attrs?.title === "string" ? nextNode.attrs.title : "";
+
+    const patchedAttrs: Record<string, string | number | boolean | null> = {
+      ...(nextNode.attrs ?? {})
+    };
+
+    if (!nextSrc && previous?.src) {
+      patchedAttrs.src = previous.src;
+      changed = true;
+    }
+
+    if (!nextAlt && previous?.alt) {
+      patchedAttrs.alt = previous.alt;
+      changed = true;
+    }
+
+    if (!nextTitle && previous?.title) {
+      patchedAttrs.title = previous.title;
+      changed = true;
+    }
+
+    nextAttrs = patchedAttrs;
+  }
+
+  const nextChildren = nextNode.content ?? [];
+  let childrenChanged = false;
+  const restoredChildren = nextChildren.map((child) => {
+    const restored = restoreMissingImageAttrs(child, previousAttrsByOrder, state);
+    if (restored !== child) {
+      childrenChanged = true;
+    }
+    return restored;
+  });
+
+  if (!changed && !childrenChanged) {
+    return nextNode;
+  }
+
+  return {
+    ...nextNode,
+    ...(nextAttrs ? { attrs: nextAttrs } : {}),
+    ...(nextNode.content ? { content: restoredChildren } : {})
+  };
+};
+
+const reconcileMissingTipTapImageAttrs = (previous: TipTapJsonContent, next: TipTapJsonContent): TipTapJsonContent => {
+  const previousAttrsByOrder: ImageNodeAttrs[] = [];
+  collectImageAttrs(previous, previousAttrsByOrder);
+  return restoreMissingImageAttrs(next, previousAttrsByOrder, { index: 0 });
+};
+
 const withHistoryFlags = (doc: PosterDoc, canUndo: boolean, canRedo: boolean): PosterDoc => ({
   ...doc,
   history: {
@@ -125,6 +224,25 @@ const normalizeSegmentHeights = (segments: PosterColumnSegment[]): PosterColumnS
   }));
 };
 
+const normalizePosterDoc = (doc: PosterDoc): PosterDoc => {
+  const nextMeta = {
+    ...doc.meta,
+    headerSubtitleVisible: doc.meta.headerSubtitleVisible ?? true
+  };
+  const nextSections = {
+    ...doc.sections,
+    headerSubtitle: doc.sections.headerSubtitle ?? {
+      content: createPlainTextDoc("Author Name • Institution Name • 2026")
+    }
+  };
+
+  return {
+    ...doc,
+    meta: nextMeta,
+    sections: nextSections
+  };
+};
+
 export interface PosterEditorState {
   posterId: string | null;
   doc: PosterDoc | null;
@@ -144,7 +262,9 @@ export interface PosterEditorState {
   setOrientation: (orientation: PosterOrientation) => void;
   setSizePreset: (size: PosterSizePreset) => void;
   toggleFooterVisible: () => void;
+  toggleHeaderSubtitleVisible: () => void;
   setHeaderContent: (content: TipTapJsonContent) => void;
+  setHeaderSubtitleContent: (content: TipTapJsonContent) => void;
   setFooterContent: (content: TipTapJsonContent) => void;
   setBlockContent: (blockId: string, content: TipTapJsonContent) => void;
   setFloatingBlockPosition: (blockId: string, x: number, y: number) => void;
@@ -224,9 +344,10 @@ export const usePosterEditorStore = create<PosterEditorState>((set) => ({
   historyGroupAt: 0,
 
   initializePoster: ({ posterId, doc }) => {
+    const normalizedDoc = normalizePosterDoc(cloneDoc(doc));
     set({
       posterId,
-      doc: withHistoryFlags(cloneDoc(doc), false, false),
+      doc: withHistoryFlags(normalizedDoc, false, false),
       isDirty: false,
       canUndo: false,
       canRedo: false,
@@ -357,6 +478,22 @@ export const usePosterEditorStore = create<PosterEditorState>((set) => ({
     });
   },
 
+  toggleHeaderSubtitleVisible: () => {
+    set((state) => {
+      if (!state.doc) {
+        return state;
+      }
+
+      return commitMutation(state, {
+        ...state.doc,
+        meta: {
+          ...state.doc.meta,
+          headerSubtitleVisible: !(state.doc.meta.headerSubtitleVisible ?? true)
+        }
+      });
+    });
+  },
+
   setHeaderContent: (content) => {
     set((state) => {
       if (!state.doc) {
@@ -376,6 +513,28 @@ export const usePosterEditorStore = create<PosterEditorState>((set) => ({
         }
       },
         { groupKey: "header-content", groupWindowMs: 1200 }
+      );
+    });
+  },
+
+  setHeaderSubtitleContent: (content) => {
+    set((state) => {
+      if (!state.doc) {
+        return state;
+      }
+
+      return commitMutation(
+        state,
+        {
+          ...state.doc,
+          sections: {
+            ...state.doc.sections,
+            headerSubtitle: {
+              content
+            }
+          }
+        },
+        { groupKey: "header-subtitle-content", groupWindowMs: 1200 }
       );
     });
   },
@@ -414,6 +573,12 @@ export const usePosterEditorStore = create<PosterEditorState>((set) => ({
         return state;
       }
 
+      const normalizedContent =
+        (block.type === "text" || block.type === "floatingParagraph") && block.content
+          ? reconcileMissingTipTapImageAttrs(block.content, content)
+          : content;
+      const safeContent = structuredClone(normalizedContent);
+
       return commitMutation(
         state,
         {
@@ -422,7 +587,7 @@ export const usePosterEditorStore = create<PosterEditorState>((set) => ({
           ...state.doc.blocks,
           [blockId]: {
             ...block,
-            content
+            content: safeContent
           }
         }
       },

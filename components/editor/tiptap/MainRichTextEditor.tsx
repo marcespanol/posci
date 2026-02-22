@@ -14,6 +14,32 @@ interface MainRichTextEditorProps {
   onChange: (content: TipTapJsonContent) => void;
 }
 
+const contentHasImageSrc = (node: TipTapJsonContent, src: string): boolean => {
+  if ((node.type === "image" || node.type === "inlineImage") && node.attrs?.src === src) {
+    return true;
+  }
+
+  return (node.content ?? []).some((child) => contentHasImageSrc(child, src));
+};
+
+const appendImageNodeToDoc = (doc: TipTapJsonContent, src: string, alt: string): TipTapJsonContent => {
+  const nextBlocks = Array.isArray(doc.content) ? [...doc.content] : [];
+  nextBlocks.push({
+    type: "image",
+    attrs: {
+      src,
+      alt,
+      width: 520
+    }
+  });
+
+  return {
+    ...doc,
+    type: "doc",
+    content: nextBlocks
+  };
+};
+
 const convertImageFileToPng = async (file: File): Promise<File> => {
   if (file.type === "image/png") {
     return file;
@@ -107,8 +133,13 @@ export default function MainRichTextEditor({ content, onChange }: MainRichTextEd
 
             const synced = editor?.getJSON() as TipTapJsonContent | undefined;
             if (synced) {
-              lastEmittedJsonRef.current = JSON.stringify(synced);
-              onChange(synced);
+              const nextSynced = contentHasImageSrc(synced, src) ? synced : appendImageNodeToDoc(synced, src, alt);
+              if (nextSynced !== synced) {
+                editor?.commands.setContent(nextSynced, false);
+              }
+
+              lastEmittedJsonRef.current = JSON.stringify(nextSynced);
+              onChange(nextSynced);
             }
           } catch (error) {
             console.error("Clipboard image upload failed", error);
@@ -119,7 +150,7 @@ export default function MainRichTextEditor({ content, onChange }: MainRichTextEd
       }
     },
     onUpdate: ({ editor: activeEditor }) => {
-      const next = activeEditor.getJSON() as TipTapJsonContent;
+      const next = structuredClone(activeEditor.getJSON() as TipTapJsonContent);
       lastEmittedJsonRef.current = JSON.stringify(next);
       onChange(next);
     }
@@ -142,8 +173,20 @@ export default function MainRichTextEditor({ content, onChange }: MainRichTextEd
       return;
     }
 
-    editor.commands.setContent(content, false);
-    lastEmittedJsonRef.current = incoming;
+    queueMicrotask(() => {
+      if (editor.isDestroyed) {
+        return;
+      }
+
+      const latest = JSON.stringify(editor.getJSON() as TipTapJsonContent);
+      if (latest === incoming) {
+        lastEmittedJsonRef.current = incoming;
+        return;
+      }
+
+      editor.commands.setContent(structuredClone(content), false);
+      lastEmittedJsonRef.current = incoming;
+    });
   }, [content, editor]);
 
   if (!editor) {

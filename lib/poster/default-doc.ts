@@ -39,6 +39,7 @@ export const createDefaultPosterDoc = (title: string): PosterDoc => {
       sizePreset: "A1",
       typographyTheme: "SERIF_HEADERS_SANS_BODY",
       colorTheme: "BLUE",
+      headerSubtitleVisible: true,
       footerVisible: true
     },
     sections: {
@@ -49,6 +50,17 @@ export const createDefaultPosterDoc = (title: string): PosterDoc => {
             {
               type: "paragraph",
               content: [{ type: "text", text: title }]
+            }
+          ]
+        }
+      },
+      headerSubtitle: {
+        content: {
+          type: "doc",
+          content: [
+            {
+              type: "paragraph",
+              content: [{ type: "text", text: "Author Name • Institution Name • 2026" }]
             }
           ]
         }

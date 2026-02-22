@@ -76,10 +76,12 @@ export interface PosterDoc {
     sizePreset: PosterSizePreset;
     typographyTheme: TypographyTheme;
     colorTheme: ColorTheme;
+    headerSubtitleVisible?: boolean;
     footerVisible: boolean;
   };
   sections: {
     header: PosterHeaderFooter;
+    headerSubtitle?: PosterHeaderFooter;
     footer: PosterHeaderFooter;
     main: PosterMainLayout;
   };
