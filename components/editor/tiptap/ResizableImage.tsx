@@ -14,6 +14,7 @@ function ResizableImageView({ node, editor, getPos, selected }: NodeViewProps) {
     alt?: string;
     title?: string;
     width?: number | null;
+    layoutMode?: "block" | "inline" | "wrap-left" | "wrap-right" | null;
   };
 
   const beginResize = (event: ReactPointerEvent<HTMLButtonElement>) => {
@@ -65,11 +66,14 @@ function ResizableImageView({ node, editor, getPos, selected }: NodeViewProps) {
   };
 
   const width = Number(attrs.width) || undefined;
+  const layoutMode = attrs.layoutMode ?? (node.type.name === "inlineImage" ? "inline" : "block");
 
   return (
     <NodeViewWrapper
       as="span"
-      className={`tiptap-resizable-image ${selected ? "tiptap-resizable-image-selected" : ""}`}
+      className={`tiptap-resizable-image tiptap-resizable-image-layout-${layoutMode} ${
+        selected ? "tiptap-resizable-image-selected" : ""
+      }`}
       contentEditable={false}
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -127,6 +131,27 @@ export const ResizableImage = Image.extend({
           }
 
           return { title: attributes.title };
+        }
+      },
+      layoutMode: {
+        default: null,
+        parseHTML: (element) => {
+          const value = element.getAttribute("data-layout-mode");
+          if (value === "block" || value === "inline" || value === "wrap-left" || value === "wrap-right") {
+            return value;
+          }
+
+          return null;
+        },
+        renderHTML: (attributes) => {
+          const value = attributes.layoutMode;
+          if (value !== "block" && value !== "inline" && value !== "wrap-left" && value !== "wrap-right") {
+            return {};
+          }
+
+          return {
+            "data-layout-mode": value
+          };
         }
       },
       width: {

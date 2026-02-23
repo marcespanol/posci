@@ -65,6 +65,10 @@ export interface PosterFloatingParagraphBlock extends PosterBlockBase {
     x: number;
     y: number;
   };
+  appearance?: {
+    shape?: "rectangle" | "circle" | "parallelogram";
+    tone?: 0 | 1 | 2 | 3;
+  };
 }
 
 export type PosterBlock = PosterTextBlock | PosterImageBlock | PosterFloatingParagraphBlock;
@@ -88,7 +92,6 @@ export interface PosterDoc {
   };
   blocks: Record<string, PosterBlock>;
   experimental?: {
-    mainEditorMode?: "legacy" | "grid-v2";
     mainGridV2?: PosterMainGridLayout;
   };
   history: {

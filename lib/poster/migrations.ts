@@ -228,8 +228,8 @@ export const migratePosterDocV1ToV2 = (v1: PosterDoc): PosterDocV2 => {
       history: v1.history
     });
 
-    // Guard against stale/partial experimental grid snapshots (observed during migration):
-    // if the saved experimental grid has no regions but legacy columns still exist, rebuild from v1.
+    // Guard against stale/partial experimental grid snapshots:
+    // if the saved experimental grid has no regions but v1 columns still exist, rebuild from v1.
     if (fromExperimental.sections.main.regions.length > 0 || v1.sections.main.columnIds.length === 0) {
       return fromExperimental;
     }
@@ -383,8 +383,8 @@ export const adaptPosterDocV2ToEditorV1 = (v2: PosterDocV2): PosterDoc => {
       headerSubtitle: normalized.sections.headerSubtitle,
       footer: normalized.sections.footer,
       // Editor currently still expects v1 columns/segments in many places.
-      // Build a compatibility fallback that keeps all grid regions visible in Legacy mode.
-      // Exact grid geometry is not preserved; regions are flattened into stacked rows.
+      // Build a compatibility fallback that keeps all grid regions visible for
+      // v1-shaped consumers. Exact grid geometry is not preserved.
       main: {
         columnIds: ["v2-compat-col-1"],
         columns: {
@@ -398,7 +398,6 @@ export const adaptPosterDocV2ToEditorV1 = (v2: PosterDocV2): PosterDoc => {
     },
     blocks: nextBlocks,
     experimental: {
-      mainEditorMode: "grid-v2",
       mainGridV2: normalized.sections.main
     },
     history: {

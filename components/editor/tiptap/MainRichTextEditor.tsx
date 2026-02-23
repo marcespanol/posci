@@ -1,7 +1,8 @@
 "use client";
 
-import { BubbleMenu, EditorContent, useEditor } from "@tiptap/react";
+import { BubbleMenu, EditorContent, useEditor, type Editor } from "@tiptap/react";
 import { useEffect, useRef } from "react";
+import { NodeSelection } from "@tiptap/pm/state";
 
 import type { TipTapJsonContent } from "@/lib/poster/types";
 import { uploadPosterAsset } from "@/lib/supabase/assets-client";
@@ -13,6 +14,14 @@ interface MainRichTextEditorProps {
   content: TipTapJsonContent;
   onChange: (content: TipTapJsonContent) => void;
 }
+
+type SelectedImageNodeInfo = {
+  pos: number;
+  typeName: "image" | "inlineImage";
+  attrs: Record<string, string | number | boolean | null | undefined>;
+};
+
+type ImageLayoutMode = "block" | "inline" | "wrap-left" | "wrap-right";
 
 const contentHasImageSrc = (node: TipTapJsonContent, src: string): boolean => {
   if ((node.type === "image" || node.type === "inlineImage") && node.attrs?.src === src) {
@@ -38,6 +47,85 @@ const appendImageNodeToDoc = (doc: TipTapJsonContent, src: string, alt: string):
     type: "doc",
     content: nextBlocks
   };
+};
+
+const getSelectedImageNodeInfo = (editor: Editor): SelectedImageNodeInfo | null => {
+  const { selection } = editor.state;
+  if (!(selection instanceof NodeSelection)) {
+    return null;
+  }
+
+  const node = selection.node;
+  const typeName = node.type.name;
+  if (typeName !== "image" && typeName !== "inlineImage") {
+    return null;
+  }
+
+  return {
+    pos: selection.from,
+    typeName,
+    attrs: { ...(node.attrs as Record<string, string | number | boolean | null | undefined>) }
+  };
+};
+
+const getSelectedImageLayoutMode = (selected: SelectedImageNodeInfo): ImageLayoutMode => {
+  const value = selected.attrs.layoutMode;
+  if (value === "wrap-left" || value === "wrap-right" || value === "inline" || value === "block") {
+    return value;
+  }
+
+  return selected.typeName === "inlineImage" ? "inline" : "block";
+};
+
+const setSelectedImageLayoutMode = (editor: Editor, layoutMode: ImageLayoutMode): boolean => {
+  const selected = getSelectedImageNodeInfo(editor);
+  if (!selected) {
+    return false;
+  }
+
+  const targetType = layoutMode === "block" ? "image" : "inlineImage";
+  if (selected.typeName === targetType) {
+    const pos = selected.pos;
+    const currentNode = editor.state.doc.nodeAt(pos);
+    if (!currentNode) {
+      return false;
+    }
+
+    const currentLayout = getSelectedImageLayoutMode(selected);
+    if (currentLayout === layoutMode) {
+      return true;
+    }
+
+    const transaction = editor.state.tr.setNodeMarkup(pos, undefined, {
+      ...(currentNode.attrs as Record<string, string | number | boolean | null | undefined>),
+      layoutMode
+    });
+    editor.view.dispatch(transaction);
+    return true;
+  }
+
+  const attrs = {
+    ...selected.attrs,
+    layoutMode,
+    inline: targetType === "inlineImage" ? true : null
+  };
+
+  const content = targetType === "inlineImage"
+    ? {
+        type: "paragraph",
+        content: [
+          {
+            type: "inlineImage",
+            attrs
+          }
+        ]
+      }
+    : {
+        type: "image",
+        attrs
+      };
+
+  return editor.chain().focus().deleteSelection().insertContent(content).run();
 };
 
 const convertImageFileToPng = async (file: File): Promise<File> => {
@@ -197,6 +285,17 @@ export default function MainRichTextEditor({ content, onChange }: MainRichTextEd
     <div className={styles.wrapper}>
       <BubbleMenu
         editor={editor}
+        shouldShow={({ editor: activeEditor, state }) => {
+          if (!activeEditor.isEditable) {
+            return false;
+          }
+
+          if (getSelectedImageNodeInfo(activeEditor)) {
+            return true;
+          }
+
+          return !state.selection.empty;
+        }}
         tippyOptions={{
           duration: 120,
           placement: "top",
@@ -208,41 +307,83 @@ export default function MainRichTextEditor({ content, onChange }: MainRichTextEd
         }}
       >
         <div className={styles.bubble}>
-          <button
-            type="button"
-            className={`${styles.tool} ${editor.isActive("heading", { level: 2 }) ? styles.toolActive : ""}`}
-            onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
-          >
-            H2
-          </button>
-          <button
-            type="button"
-            className={`${styles.tool} ${editor.isActive("paragraph") ? styles.toolActive : ""}`}
-            onClick={() => editor.chain().focus().setParagraph().run()}
-          >
-            P
-          </button>
-          <button
-            type="button"
-            className={`${styles.tool} ${editor.isActive("bold") ? styles.toolActive : ""}`}
-            onClick={() => editor.chain().focus().toggleBold().run()}
-          >
-            B
-          </button>
-          <button
-            type="button"
-            className={`${styles.tool} ${editor.isActive("italic") ? styles.toolActive : ""}`}
-            onClick={() => editor.chain().focus().toggleItalic().run()}
-          >
-            I
-          </button>
-          <button
-            type="button"
-            className={`${styles.tool} ${editor.isActive("underline") ? styles.toolActive : ""}`}
-            onClick={() => editor.chain().focus().toggleUnderline().run()}
-          >
-            U
-          </button>
+          {(() => {
+            const selectedImage = getSelectedImageNodeInfo(editor);
+            if (selectedImage) {
+              const imageLayoutMode = getSelectedImageLayoutMode(selectedImage);
+              return (
+                <>
+                  <button
+                    type="button"
+                    className={`${styles.tool} ${imageLayoutMode === "block" ? styles.toolActive : ""}`}
+                    onClick={() => {
+                      setSelectedImageLayoutMode(editor, "block");
+                    }}
+                  >
+                    Block
+                  </button>
+                  <button
+                    type="button"
+                    className={`${styles.tool} ${imageLayoutMode === "wrap-left" ? styles.toolActive : ""}`}
+                    onClick={() => {
+                      setSelectedImageLayoutMode(editor, "wrap-left");
+                    }}
+                  >
+                    Wrap L
+                  </button>
+                  <button
+                    type="button"
+                    className={`${styles.tool} ${imageLayoutMode === "wrap-right" ? styles.toolActive : ""}`}
+                    onClick={() => {
+                      setSelectedImageLayoutMode(editor, "wrap-right");
+                    }}
+                  >
+                    Wrap R
+                  </button>
+                </>
+              );
+            }
+
+            return (
+              <>
+                <button
+                  type="button"
+                  className={`${styles.tool} ${editor.isActive("heading", { level: 2 }) ? styles.toolActive : ""}`}
+                  onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
+                >
+                  H2
+                </button>
+                <button
+                  type="button"
+                  className={`${styles.tool} ${editor.isActive("paragraph") ? styles.toolActive : ""}`}
+                  onClick={() => editor.chain().focus().setParagraph().run()}
+                >
+                  P
+                </button>
+                <button
+                  type="button"
+                  className={`${styles.tool} ${editor.isActive("bold") ? styles.toolActive : ""}`}
+                  onClick={() => editor.chain().focus().toggleBold().run()}
+                >
+                  B
+                </button>
+                <button
+                  type="button"
+                  className={`${styles.tool} ${editor.isActive("italic") ? styles.toolActive : ""}`}
+                  onClick={() => editor.chain().focus().toggleItalic().run()}
+                >
+                  I
+                </button>
+                <button
+                  type="button"
+                  className={`${styles.tool} ${editor.isActive("underline") ? styles.toolActive : ""}`}
+                  onClick={() => editor.chain().focus().toggleUnderline().run()}
+                >
+                  U
+                </button>
+              </>
+            );
+          })()}
         </div>
       </BubbleMenu>
 

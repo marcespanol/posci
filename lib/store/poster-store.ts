@@ -1,12 +1,10 @@
 import { create } from "zustand";
 
-import { adaptPosterDocV2ToEditorV1, migratePosterDocToLatest, normalizePosterDocV2 } from "@/lib/poster/migrations";
+import { migratePosterDocToLatest, normalizePosterDocV2 } from "@/lib/poster/migrations";
 import type {
   ColorTheme,
   PosterBlock,
-  PosterDoc,
   PosterDocAny,
-  PosterDocLatest,
   PosterDocV2,
   PosterMainRegion,
   PosterOrientation,
@@ -25,7 +23,6 @@ interface CommitOptions {
   groupWindowMs?: number;
 }
 
-const cloneDoc = (doc: PosterDoc): PosterDoc => structuredClone(doc);
 const cloneValue = <T>(value: T): T => structuredClone(value);
 const MAX_HISTORY = 100;
 
@@ -54,16 +51,6 @@ const createDefaultTextContent = (title?: string): TipTapJsonContent => ({
     {
       type: "paragraph",
       content: [{ type: "text", text: "" }]
-    }
-  ]
-});
-
-const createPlainTextDoc = (text: string): TipTapJsonContent => ({
-  type: "doc",
-  content: [
-    {
-      type: "paragraph",
-      content: text ? [{ type: "text", text }] : [{ type: "text", text: "" }]
     }
   ]
 });
@@ -157,14 +144,6 @@ const reconcileMissingTipTapImageAttrs = (previous: TipTapJsonContent, next: Tip
   return restoreMissingImageAttrs(next, previousAttrsByOrder, { index: 0 });
 };
 
-const withHistoryFlags = (doc: PosterDoc, canUndo: boolean, canRedo: boolean): PosterDoc => ({
-  ...doc,
-  history: {
-    canUndo,
-    canRedo
-  }
-});
-
 const withHistoryFlagsV2 = (doc: PosterDocV2, canUndo: boolean, canRedo: boolean): PosterDocV2 => ({
   ...doc,
   history: {
@@ -172,39 +151,6 @@ const withHistoryFlagsV2 = (doc: PosterDocV2, canUndo: boolean, canRedo: boolean
     canRedo
   }
 });
-
-const normalizePosterDoc = (doc: PosterDoc): PosterDoc => {
-  const nextMeta = {
-    ...doc.meta,
-    headerSubtitleVisible: doc.meta.headerSubtitleVisible ?? true
-  };
-  const nextSections = {
-    ...doc.sections,
-    headerSubtitle: doc.sections.headerSubtitle ?? {
-      content: createPlainTextDoc("Author Name • Institution Name • 2026")
-    }
-  };
-
-  return {
-    ...doc,
-    meta: nextMeta,
-    sections: nextSections,
-    experimental: {
-      ...doc.experimental,
-      mainEditorMode: "grid-v2"
-    }
-  };
-};
-
-const isPosterDocV2 = (doc: PosterDocAny): doc is PosterDocV2 => doc.version === 2;
-
-const prepareIncomingDocForCurrentEditor = (doc: PosterDocAny): PosterDocLatest => {
-  if (isPosterDocV2(doc)) {
-    return normalizePosterDoc(adaptPosterDocV2ToEditorV1(doc));
-  }
-
-  return normalizePosterDoc(cloneDoc(doc));
-};
 
 const regionsOverlap = (a: Pick<PosterMainRegion, "id" | "x" | "y" | "w" | "h">, b: Pick<PosterMainRegion, "id" | "x" | "y" | "w" | "h">): boolean => {
   if (a.id === b.id) {
@@ -245,45 +191,12 @@ const syncGridModeDocV2Regions = (state: PosterEditorState, nextRegions: PosterM
   });
 };
 
-const deriveCompatibilityDocFromGridMode = (state: PosterEditorState, nextGridModeDocV2: PosterDocV2 | null): PosterDoc | null => {
-  if (!state.doc) {
-    return state.doc;
-  }
-
-  if (!nextGridModeDocV2) {
-    return state.doc;
-  }
-
-  return normalizePosterDoc(adaptPosterDocV2ToEditorV1(nextGridModeDocV2));
-};
-
 const getGridRegionsSource = (state: PosterEditorState): PosterMainRegion[] => {
   return state.gridModeDocV2?.sections.main.regions ?? [];
 };
 
-const bootstrapGridModeDocV2FromRegions = (
-  state: PosterEditorState,
-  nextRegions: PosterMainRegion[]
-): PosterDocV2 | null => {
-  if (state.gridModeDocV2) {
-    return syncGridModeDocV2Regions(state, nextRegions);
-  }
-
-  if (!state.doc) {
-    return null;
-  }
-
-  const migrated = migratePosterDocToLatest(cloneValue(state.doc));
-  return normalizePosterDocV2({
-    ...migrated,
-    sections: {
-      ...migrated.sections,
-      main: {
-        ...migrated.sections.main,
-        regions: structuredClone(nextRegions)
-      }
-    }
-  });
+const getPosterBlocksSource = (state: PosterEditorState): Record<string, PosterBlock> => {
+  return state.gridModeDocV2?.blocks ?? {};
 };
 
 const sameRegionLayout = (a: PosterMainRegion[], b: PosterMainRegion[]): boolean => {
@@ -318,9 +231,10 @@ const commitGridModeMirrorMutation = (
   mutateV2: (doc: PosterDocV2) => PosterDocV2,
   options?: CommitOptions
 ): PosterEditorState => {
-  const baseV2 = state.gridModeDocV2
-    ? cloneValue(state.gridModeDocV2)
-    : migratePosterDocToLatest(cloneValue(state.doc as PosterDoc));
+  const baseV2 = state.gridModeDocV2 ? cloneValue(state.gridModeDocV2) : null;
+  if (!baseV2) {
+    return state;
+  }
   const nextGridModeDocV2 = normalizePosterDocV2(mutateV2(baseV2));
   const groupKey = options?.groupKey;
   const groupWindowMs = options?.groupWindowMs ?? 1200;
@@ -340,10 +254,7 @@ const commitGridModeMirrorMutation = (
       gridHistoryFuture: [],
       gridHistoryGroupKey: groupKey ?? null,
       gridHistoryGroupAt: now,
-      gridModeDocV2: nextWithFlags,
-      // Grid runtime reads from the v2 mirror; compatibility projection refreshes
-      // lazily at save/bootstrap/undo-redo boundaries.
-      doc: state.doc
+      gridModeDocV2: nextWithFlags
     };
   }
 
@@ -360,14 +271,12 @@ const commitGridModeMirrorMutation = (
     gridHistoryFuture: [],
     gridHistoryGroupKey: groupKey ?? null,
     gridHistoryGroupAt: now,
-    gridModeDocV2: nextWithFlags,
-    doc: state.doc
+    gridModeDocV2: nextWithFlags
   };
 };
 
 export interface PosterEditorState {
   posterId: string | null;
-  doc: PosterDoc | null;
   isDirty: boolean;
   canUndo: boolean;
   canRedo: boolean;
@@ -392,6 +301,10 @@ export interface PosterEditorState {
   setFooterContent: (content: TipTapJsonContent) => void;
   setBlockContent: (blockId: string, content: TipTapJsonContent) => void;
   setFloatingBlockPosition: (blockId: string, x: number, y: number) => void;
+  setFloatingParagraphAppearance: (
+    blockId: string,
+    patch: { shape?: "rectangle" | "circle" | "parallelogram"; tone?: 0 | 1 | 2 | 3 }
+  ) => void;
   addFloatingParagraph: () => void;
   removeFloatingParagraph: (blockId: string) => void;
   initializeGridPreviewRegions: (regions: PosterMainRegion[]) => void;
@@ -415,7 +328,6 @@ export interface PosterEditorState {
 
 export const usePosterEditorStore = create<PosterEditorState>((set) => ({
   posterId: null,
-  doc: null,
   isDirty: false,
   canUndo: false,
   canRedo: false,
@@ -427,13 +339,12 @@ export const usePosterEditorStore = create<PosterEditorState>((set) => ({
   gridPreviewSelectedRegionId: null,
 
   initializePoster: ({ posterId, doc }) => {
-    // Validate migrator at the store boundary while the v1 editor UI is still active.
-    // Once the grid editor lands, this boundary becomes the single switch to store v2 docs.
+    // Store boundary normalization: hydrate the canonical v2 mirror eagerly.
+    // Compatibility projection stays lazy and is rebuilt only at boundary paths
+    // (e.g. undo/redo projection refresh or fallback bootstraps).
     const latestDoc = migratePosterDocToLatest(cloneValue(doc));
-    const normalizedDoc = prepareIncomingDocForCurrentEditor(doc);
     set({
       posterId,
-      doc: withHistoryFlags(normalizedDoc, false, false),
       isDirty: false,
       canUndo: false,
       canRedo: false,
@@ -449,7 +360,6 @@ export const usePosterEditorStore = create<PosterEditorState>((set) => ({
   resetPoster: () => {
     set({
       posterId: null,
-      doc: null,
       isDirty: false,
       canUndo: false,
       canRedo: false,
@@ -464,15 +374,13 @@ export const usePosterEditorStore = create<PosterEditorState>((set) => ({
 
   setDoc: (doc) => {
     set((state) => {
-      if (!state.doc) {
+      if (!state.posterId) {
         return state;
       }
 
       const latestDoc = migratePosterDocToLatest(cloneValue(doc));
-      const normalizedDoc = prepareIncomingDocForCurrentEditor(doc);
       return {
         ...state,
-        doc: withHistoryFlags(cloneDoc(normalizedDoc), false, false),
         isDirty: false,
         canUndo: false,
         canRedo: false,
@@ -487,7 +395,7 @@ export const usePosterEditorStore = create<PosterEditorState>((set) => ({
 
   setMetaTitle: (title) => {
     set((state) => {
-      if (!state.doc) {
+      if (!state.gridModeDocV2) {
         return state;
       }
       return commitGridModeMirrorMutation(state, (v2Doc) => ({
@@ -502,7 +410,7 @@ export const usePosterEditorStore = create<PosterEditorState>((set) => ({
 
   setTypographyTheme: (theme) => {
     set((state) => {
-      if (!state.doc) {
+      if (!state.gridModeDocV2) {
         return state;
       }
       return commitGridModeMirrorMutation(state, (v2Doc) => ({
@@ -517,7 +425,7 @@ export const usePosterEditorStore = create<PosterEditorState>((set) => ({
 
   setColorTheme: (theme) => {
     set((state) => {
-      if (!state.doc) {
+      if (!state.gridModeDocV2) {
         return state;
       }
       return commitGridModeMirrorMutation(state, (v2Doc) => ({
@@ -532,7 +440,7 @@ export const usePosterEditorStore = create<PosterEditorState>((set) => ({
 
   setOrientation: (orientation) => {
     set((state) => {
-      if (!state.doc) {
+      if (!state.gridModeDocV2) {
         return state;
       }
       return commitGridModeMirrorMutation(state, (v2Doc) => ({
@@ -547,7 +455,7 @@ export const usePosterEditorStore = create<PosterEditorState>((set) => ({
 
   setSizePreset: (size) => {
     set((state) => {
-      if (!state.doc) {
+      if (!state.gridModeDocV2) {
         return state;
       }
       return commitGridModeMirrorMutation(state, (v2Doc) => ({
@@ -562,7 +470,7 @@ export const usePosterEditorStore = create<PosterEditorState>((set) => ({
 
   toggleFooterVisible: () => {
     set((state) => {
-      if (!state.doc) {
+      if (!state.gridModeDocV2) {
         return state;
       }
       return commitGridModeMirrorMutation(state, (v2Doc) => ({
@@ -577,7 +485,7 @@ export const usePosterEditorStore = create<PosterEditorState>((set) => ({
 
   toggleHeaderSubtitleVisible: () => {
     set((state) => {
-      if (!state.doc) {
+      if (!state.gridModeDocV2) {
         return state;
       }
       return commitGridModeMirrorMutation(state, (v2Doc) => ({
@@ -592,7 +500,7 @@ export const usePosterEditorStore = create<PosterEditorState>((set) => ({
 
   setHeaderContent: (content) => {
     set((state) => {
-      if (!state.doc) {
+      if (!state.gridModeDocV2) {
         return state;
       }
 
@@ -615,7 +523,7 @@ export const usePosterEditorStore = create<PosterEditorState>((set) => ({
 
   setHeaderSubtitleContent: (content) => {
     set((state) => {
-      if (!state.doc) {
+      if (!state.gridModeDocV2) {
         return state;
       }
 
@@ -637,7 +545,7 @@ export const usePosterEditorStore = create<PosterEditorState>((set) => ({
 
   setFooterContent: (content) => {
     set((state) => {
-      if (!state.doc) {
+      if (!state.gridModeDocV2) {
         return state;
       }
 
@@ -660,11 +568,11 @@ export const usePosterEditorStore = create<PosterEditorState>((set) => ({
 
   setBlockContent: (blockId, content) => {
     set((state) => {
-      if (!state.doc) {
+      if (!state.gridModeDocV2) {
         return state;
       }
 
-      const block = state.doc.blocks[blockId];
+      const block = getPosterBlocksSource(state)[blockId];
       if (!block || !isTextualBlock(block)) {
         return state;
       }
@@ -701,11 +609,11 @@ export const usePosterEditorStore = create<PosterEditorState>((set) => ({
 
   setFloatingBlockPosition: (blockId, x, y) => {
     set((state) => {
-      if (!state.doc) {
+      if (!state.gridModeDocV2) {
         return state;
       }
 
-      const block = state.doc.blocks[blockId];
+      const block = getPosterBlocksSource(state)[blockId];
       if (!block || block.type !== "floatingParagraph") {
         return state;
       }
@@ -734,13 +642,47 @@ export const usePosterEditorStore = create<PosterEditorState>((set) => ({
     });
   },
 
-  addFloatingParagraph: () => {
+  setFloatingParagraphAppearance: (blockId, patch) => {
     set((state) => {
-      if (!state.doc) {
+      if (!state.gridModeDocV2) {
         return state;
       }
 
-      const floatingCount = Object.values(state.doc.blocks).filter((block) => block.type === "floatingParagraph").length;
+      const block = getPosterBlocksSource(state)[blockId];
+      if (!block || block.type !== "floatingParagraph") {
+        return state;
+      }
+
+      return commitGridModeMirrorMutation(state, (v2Doc) => {
+        const v2Block = v2Doc.blocks[blockId];
+        if (!v2Block || v2Block.type !== "floatingParagraph") {
+          return v2Doc;
+        }
+
+        return {
+          ...v2Doc,
+          blocks: {
+            ...v2Doc.blocks,
+            [blockId]: {
+              ...v2Block,
+              appearance: {
+                shape: patch.shape ?? v2Block.appearance?.shape ?? "rectangle",
+                tone: patch.tone ?? v2Block.appearance?.tone ?? 1
+              }
+            }
+          }
+        };
+      });
+    });
+  },
+
+  addFloatingParagraph: () => {
+    set((state) => {
+      if (!state.gridModeDocV2) {
+        return state;
+      }
+
+      const floatingCount = Object.values(getPosterBlocksSource(state)).filter((block) => block.type === "floatingParagraph").length;
       const blockId = createId("floating");
 
       return commitGridModeMirrorMutation(state, (v2Doc) => ({
@@ -754,6 +696,10 @@ export const usePosterEditorStore = create<PosterEditorState>((set) => ({
               x: 24 + floatingCount * 18,
               y: 24 + floatingCount * 18
             },
+            appearance: {
+              shape: "rectangle",
+              tone: 1
+            },
             content: createDefaultTextContent()
           }
         }
@@ -763,11 +709,11 @@ export const usePosterEditorStore = create<PosterEditorState>((set) => ({
 
   removeFloatingParagraph: (blockId) => {
     set((state) => {
-      if (!state.doc) {
+      if (!state.gridModeDocV2) {
         return state;
       }
 
-      const block = state.doc.blocks[blockId];
+      const block = getPosterBlocksSource(state)[blockId];
       if (!block || block.type !== "floatingParagraph") {
         return state;
       }
@@ -819,16 +765,7 @@ export const usePosterEditorStore = create<PosterEditorState>((set) => ({
         return state;
       }
 
-      const nextGridModeDocV2 = bootstrapGridModeDocV2FromRegions(state, nextRegions);
-
-      return {
-        ...state,
-        gridModeDocV2: nextGridModeDocV2,
-        // Bootstrap/migration fallback: seed the compatibility projection once
-        // when the canonical grid mirror is created from incoming regions.
-        doc: deriveCompatibilityDocFromGridMode(state, nextGridModeDocV2),
-        gridPreviewSelectedRegionId: selectedRegionId
-      };
+      return state;
     });
   },
 
@@ -874,10 +811,7 @@ export const usePosterEditorStore = create<PosterEditorState>((set) => ({
       return {
         ...state,
         isDirty: true,
-        gridModeDocV2: nextGridModeDocV2,
-        // Grid resize can fire continuously while dragging; avoid rebuilding the
-        // v1 compatibility projection on every pointer move.
-        doc: state.doc
+        gridModeDocV2: nextGridModeDocV2
       };
     });
 
@@ -920,7 +854,6 @@ export const usePosterEditorStore = create<PosterEditorState>((set) => ({
         ...state,
         isDirty: true,
         gridModeDocV2: nextGridModeDocV2,
-        doc: state.doc,
         gridPreviewSelectedRegionId: topRegion.id
       };
     });
@@ -964,7 +897,6 @@ export const usePosterEditorStore = create<PosterEditorState>((set) => ({
         ...state,
         isDirty: true,
         gridModeDocV2: nextGridModeDocV2,
-        doc: state.doc,
         gridPreviewSelectedRegionId: leftRegion.id
       };
     });
@@ -1008,9 +940,6 @@ export const usePosterEditorStore = create<PosterEditorState>((set) => ({
         ...state,
         isDirty: true,
         gridModeDocV2: nextGridModeDocV2,
-        // Grid move can fire continuously while dragging; keep compatibility doc
-        // stale until a discrete action/save path needs it.
-        doc: state.doc,
         gridPreviewSelectedRegionId: regionId
       };
     });
@@ -1037,7 +966,6 @@ export const usePosterEditorStore = create<PosterEditorState>((set) => ({
         ...state,
         isDirty: true,
         gridModeDocV2: nextGridModeDocV2,
-        doc: state.doc,
         gridPreviewSelectedRegionId: nextSelected
       };
     });
@@ -1076,7 +1004,6 @@ export const usePosterEditorStore = create<PosterEditorState>((set) => ({
         ...state,
         isDirty: true,
         gridModeDocV2: nextGridModeDocV2,
-        doc: state.doc,
         gridPreviewSelectedRegionId: merged.id
       };
     });
@@ -1119,7 +1046,6 @@ export const usePosterEditorStore = create<PosterEditorState>((set) => ({
         ...state,
         isDirty: true,
         gridModeDocV2: nextGridModeDocV2,
-        doc: state.doc,
         gridPreviewSelectedRegionId: merged.id
       };
     });
@@ -1131,7 +1057,7 @@ export const usePosterEditorStore = create<PosterEditorState>((set) => ({
     let changed = false;
 
     set((state) => {
-      if (!state.doc) {
+      if (!state.gridModeDocV2) {
         return state;
       }
 
@@ -1197,8 +1123,6 @@ export const usePosterEditorStore = create<PosterEditorState>((set) => ({
       const currentSnapshot = cloneValue(state.gridModeDocV2);
       const nextFuture = [currentSnapshot, ...state.gridHistoryFuture].slice(0, MAX_HISTORY);
       const previousWithFlags = withHistoryFlagsV2(cloneValue(previous), nextPast.length > 0, nextFuture.length > 0);
-      const nextCompatibilityDoc = deriveCompatibilityDocFromGridMode(state, previousWithFlags) ?? state.doc;
-
       return {
         ...state,
         isDirty: true,
@@ -1208,8 +1132,7 @@ export const usePosterEditorStore = create<PosterEditorState>((set) => ({
         gridHistoryFuture: nextFuture,
         gridHistoryGroupKey: null,
         gridHistoryGroupAt: 0,
-        gridModeDocV2: previousWithFlags,
-        doc: nextCompatibilityDoc
+        gridModeDocV2: previousWithFlags
       };
     });
   },
@@ -1224,8 +1147,6 @@ export const usePosterEditorStore = create<PosterEditorState>((set) => ({
       const current = state.gridModeDocV2;
       const nextPast = [...state.gridHistoryPast, cloneValue(current)].slice(-MAX_HISTORY);
       const nextWithFlags = withHistoryFlagsV2(cloneValue(next), nextPast.length > 0, remainingFuture.length > 0);
-      const nextCompatibilityDoc = deriveCompatibilityDocFromGridMode(state, nextWithFlags) ?? state.doc;
-
       return {
         ...state,
         isDirty: true,
@@ -1235,8 +1156,7 @@ export const usePosterEditorStore = create<PosterEditorState>((set) => ({
         gridHistoryFuture: remainingFuture,
         gridHistoryGroupKey: null,
         gridHistoryGroupAt: 0,
-        gridModeDocV2: nextWithFlags,
-        doc: nextCompatibilityDoc
+        gridModeDocV2: nextWithFlags
       };
     });
   },

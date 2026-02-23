@@ -75,6 +75,39 @@
   line-height: 0;
 }
 
+.editor :global(.tiptap-resizable-image-layout-block) {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0.35rem 0;
+  float: none;
+  clear: both;
+}
+
+.editor :global(.tiptap-resizable-image-layout-inline) {
+  display: inline-block;
+  vertical-align: middle;
+  margin: 0 0.25rem;
+  float: none;
+  clear: none;
+}
+
+.editor :global(.tiptap-resizable-image-layout-wrap-left) {
+  display: block;
+  float: left;
+  clear: none;
+  max-width: min(70%, 520px);
+  margin: 0.25rem 0.65rem 0.45rem 0;
+}
+
+.editor :global(.tiptap-resizable-image-layout-wrap-right) {
+  display: block;
+  float: right;
+  clear: none;
+  max-width: min(70%, 520px);
+  margin: 0.25rem 0 0.45rem 0.65rem;
+}
+
 .editor :global(.tiptap-resizable-image img) {
   display: block;
   max-width: 100%;

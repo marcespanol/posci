@@ -32,7 +32,6 @@ const isPanLockTarget = (target: EventTarget | null): boolean => {
 };
 
 export default function MainBlocksEditor({ fullscreen = false }: MainBlocksEditorProps) {
-  const doc = usePosterEditorStore((state) => state.doc);
   const readDoc = usePosterEditorStore(selectPosterReadDoc);
   const posterId = usePosterEditorStore((state) => state.posterId);
   const setBlockContent = usePosterEditorStore((state) => state.setBlockContent);
@@ -119,7 +118,6 @@ export default function MainBlocksEditor({ fullscreen = false }: MainBlocksEdito
   }, [gridDrawStatusText]);
 
   const { v2PreviewDoc, isGridPreviewMode } = useGridPreviewRuntime({
-    doc,
     gridModeDocV2,
     initializeRegions: initializeGridRegions,
     selectRegion: selectGridRegion
@@ -152,7 +150,7 @@ export default function MainBlocksEditor({ fullscreen = false }: MainBlocksEdito
     setBlockContent
   });
 
-  if (!doc || !readDoc) {
+  if (!readDoc) {
     return null;
   }
   const artboardSizeClass =
@@ -322,6 +320,9 @@ export default function MainBlocksEditor({ fullscreen = false }: MainBlocksEdito
                   onMergeRight={gridDockActions.onMergeRight}
                   onDelete={gridDockActions.onDelete}
                   onAddImage={gridDockActions.onAddImage}
+                  onAddFloatingParagraph={() => {
+                    addFloatingParagraph();
+                  }}
                   onToggleDrawMode={() => {
                     setGridDrawStatusText(null);
                     setGridDrawMode((current) => !current);

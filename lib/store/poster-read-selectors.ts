@@ -1,6 +1,5 @@
 import type {
   ColorTheme,
-  PosterDoc,
   PosterDocV2,
   PosterMainRegion,
   PosterOrientation,
@@ -9,20 +8,13 @@ import type {
 } from "@/lib/poster/types";
 
 type EditorStateReadSlice = {
-  doc: PosterDoc | null;
   gridModeDocV2: PosterDocV2 | null;
   gridPreviewSelectedRegionId: string | null;
 };
 
 const EMPTY_GRID_REGIONS: PosterMainRegion[] = [];
 
-export const selectPosterReadDoc = (state: EditorStateReadSlice): PosterDoc | PosterDocV2 | null => {
-  if (state.gridModeDocV2) {
-    return state.gridModeDocV2;
-  }
-
-  return state.doc;
-};
+export const selectPosterReadDoc = (state: EditorStateReadSlice): PosterDocV2 | null => state.gridModeDocV2;
 
 export const selectPosterReadTitle = (state: EditorStateReadSlice): string => {
   return selectPosterReadDoc(state)?.meta.title ?? "";

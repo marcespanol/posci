@@ -21,6 +21,7 @@ interface GridLayoutControlsProps {
   onMergeRight: () => void;
   onDelete: () => void;
   onAddImage: () => void;
+  onAddFloatingParagraph: () => void;
   onToggleDrawMode: () => void;
 }
 
@@ -43,6 +44,7 @@ export default function GridLayoutControls({
   onMergeRight,
   onDelete,
   onAddImage,
+  onAddFloatingParagraph,
   onToggleDrawMode
 }: GridLayoutControlsProps) {
   const hasSelection = Boolean(selectedRegionId);
@@ -92,6 +94,9 @@ export default function GridLayoutControls({
       </button>
       <button type="button" className={styles.controlButton} onClick={onAddImage}>
         Add image
+      </button>
+      <button type="button" className={styles.controlButton} onClick={onAddFloatingParagraph}>
+        Add floating
       </button>
     </div>
   );

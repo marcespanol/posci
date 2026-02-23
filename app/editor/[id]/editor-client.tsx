@@ -13,7 +13,7 @@ import { usePosterEditorDocumentFacade } from "@/components/editor/usePosterEdit
 import { downloadPdfFromPngDataUrl } from "@/lib/poster/export-pdf";
 import { downloadPosterElementAsPng, renderPosterElementToPngDataUrl } from "@/lib/poster/export-png";
 import { toPersistablePosterSavePayload } from "@/lib/poster/persistence-adapter";
-import type { PosterDoc, PosterDocAny, PosterDocV2 } from "@/lib/poster/types";
+import type { PosterDocAny, PosterDocV2 } from "@/lib/poster/types";
 import { usePosterEditorStore } from "@/lib/store/poster-store";
 
 type LeftPanelMode = "text" | "theme" | "layout" | null;
@@ -36,7 +36,7 @@ const formatDate = (value: string): string => {
 
 export default function EditorClient({ posterId, updatedAt, initialDoc }: EditorClientProps) {
   const documentFacade = usePosterEditorDocumentFacade();
-  const { doc, readDoc, gridModeDocV2, readTitle, persistableHash } = documentFacade;
+  const { readDoc, gridModeDocV2, readTitle, persistableHash } = documentFacade;
   const isDirty = usePosterEditorStore((state) => state.isDirty);
   const initializePoster = usePosterEditorStore((state) => state.initializePoster);
   const resetPoster = usePosterEditorStore((state) => state.resetPoster);
@@ -57,7 +57,6 @@ export default function EditorClient({ posterId, updatedAt, initialDoc }: Editor
   const [lastSavedAt, setLastSavedAt] = useState<string>(updatedAt);
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const latestDocRef = useRef<PosterDoc | null>(null);
   const latestGridModeDocV2Ref = useRef<PosterDocV2 | null>(null);
   const latestHashRef = useRef<string>("");
   const lastSavedHashRef = useRef<string>("");
@@ -70,7 +69,6 @@ export default function EditorClient({ posterId, updatedAt, initialDoc }: Editor
     initializePoster({ posterId, doc: initialDoc });
     latestHashRef.current = "";
     lastSavedHashRef.current = "";
-    latestDocRef.current = null;
     latestGridModeDocV2Ref.current = null;
     initializedPosterIdRef.current = posterId;
 
@@ -88,17 +86,16 @@ export default function EditorClient({ posterId, updatedAt, initialDoc }: Editor
   }, []);
 
   useEffect(() => {
-    if (!doc) {
+    if (!gridModeDocV2) {
       return;
     }
 
-    latestDocRef.current = doc;
     latestGridModeDocV2Ref.current = gridModeDocV2;
     latestHashRef.current = persistableHash;
     if (!lastSavedHashRef.current) {
       lastSavedHashRef.current = latestHashRef.current;
     }
-  }, [doc, gridModeDocV2, persistableHash]);
+  }, [gridModeDocV2, persistableHash]);
 
   useEffect(() => {
     if (!isDirty) {
@@ -154,9 +151,8 @@ export default function EditorClient({ posterId, updatedAt, initialDoc }: Editor
   }, [canRedo, canUndo, redo, undo]);
 
   const persistLatest = useCallback(async () => {
-    const activeDoc = latestDocRef.current;
     const activeGridModeDocV2 = latestGridModeDocV2Ref.current;
-    if (!activeDoc && !activeGridModeDocV2) {
+    if (!activeGridModeDocV2) {
       return;
     }
 
@@ -176,7 +172,7 @@ export default function EditorClient({ posterId, updatedAt, initialDoc }: Editor
     setSaveError(null);
 
     try {
-      const savePayload = toPersistablePosterSavePayload(activeDoc, activeGridModeDocV2);
+      const savePayload = toPersistablePosterSavePayload(null, activeGridModeDocV2);
       await savePosterAction({
         posterId,
         title: savePayload.title,
@@ -204,7 +200,7 @@ export default function EditorClient({ posterId, updatedAt, initialDoc }: Editor
   }, [markSaved, posterId]);
 
   useEffect(() => {
-    if (!doc) {
+    if (!readDoc) {
       return;
     }
 
@@ -229,7 +225,7 @@ export default function EditorClient({ posterId, updatedAt, initialDoc }: Editor
         clearTimeout(saveTimerRef.current);
       }
     };
-  }, [doc, persistLatest]);
+  }, [persistLatest, readDoc]);
 
   const statusLabel = useMemo(() => {
     if (saveError) {
@@ -243,7 +239,7 @@ export default function EditorClient({ posterId, updatedAt, initialDoc }: Editor
     return isDirty ? "Unsaved changes" : "Saved";
   }, [isDirty, isSaving, saveError]);
 
-  if (!doc || !readDoc) {
+  if (!readDoc) {
     return (
       <main className={styles.page}>
         <p className={styles.loading}>Loading editor state...</p>

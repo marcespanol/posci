@@ -19,22 +19,29 @@ export function useMainTextBlockTargetResolver({
 }: UseMainTextBlockTargetResolverParams) {
   return useCallback((): string | null => {
     if (v2PreviewDoc) {
+      const regionCandidates: PosterMainRegion[] = [];
       const preferredRegionId = gridSelectedRegionId ?? gridRegions[0]?.id ?? null;
-      if (!preferredRegionId) {
-        return null;
+      if (preferredRegionId) {
+        const preferredRegion = v2PreviewDoc.sections.main.regions.find((item) => item.id === preferredRegionId);
+        if (preferredRegion) {
+          regionCandidates.push(preferredRegion);
+        }
       }
 
-      const region = v2PreviewDoc.sections.main.regions.find((item) => item.id === preferredRegionId);
-      if (!region) {
-        return null;
+      for (const region of v2PreviewDoc.sections.main.regions) {
+        if (!regionCandidates.some((candidate) => candidate.id === region.id)) {
+          regionCandidates.push(region);
+        }
       }
 
-      const block = v2PreviewDoc.blocks[region.blockId];
-      if (!block || block.type !== "text") {
-        return null;
+      for (const region of regionCandidates) {
+        const block = v2PreviewDoc.blocks[region.blockId];
+        if (block && block.type === "text") {
+          return block.id;
+        }
       }
 
-      return block.id;
+      return null;
     }
 
     return getLegacyTargetTextBlockId();

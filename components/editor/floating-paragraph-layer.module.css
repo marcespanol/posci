@@ -4,15 +4,39 @@
   pointer-events: none;
 }
 
+.alignmentGuideVertical {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  margin-left: -0.5px;
+  background: rgba(47, 111, 183, 0.75);
+  box-shadow: 0 0 0 1px rgba(47, 111, 183, 0.15);
+  z-index: 350;
+  pointer-events: none;
+}
+
+.alignmentGuideHorizontal {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  margin-top: -0.5px;
+  background: rgba(47, 111, 183, 0.75);
+  box-shadow: 0 0 0 1px rgba(47, 111, 183, 0.15);
+  z-index: 350;
+  pointer-events: none;
+}
+
 .block {
   position: absolute;
   pointer-events: auto;
   display: inline-block;
-  padding: 0.2rem;
+  padding: 0.22rem;
   border: 1px solid transparent;
-  border-radius: 10px;
-  cursor: move;
-  background-color: white;
+  cursor: default;
+  background-color: #fff;
+  max-width: min(48%, 420px);
 }
 
 .block:hover,
@@ -22,17 +46,37 @@
 }
 
 .blockActive {
-  z-index: 20;
+  z-index: 220;
+}
+
+.blockRectangle {
+  border-radius: 10px;
+}
+
+.blockCircle {
+  border-radius: 999px;
+  padding: 0.55rem 0.7rem;
+}
+
+.blockParallelogram {
+  border-radius: 8px;
+  transform: skewX(-14deg);
+}
+
+.blockParallelogram .editorShell,
+.blockParallelogram .inlineControls,
+.blockParallelogram .removeButton {
+  transform: skewX(14deg);
 }
 
 .editorShell {
   cursor: text;
+  display: inline-block;
+  max-width: 100%;
 }
 
 .removeButton {
-  position: absolute;
-  top: 0.35rem;
-  right: 0.4rem;
+  position: static;
   width: 1rem;
   height: 1rem;
   border: 0;
@@ -44,7 +88,9 @@
   opacity: 0;
   pointer-events: none;
   transition: opacity 120ms ease;
-  z-index: 25;
+  z-index: 1;
+  align-self: center;
+  margin-left: 0.05rem;
 }
 
 .block:hover .removeButton,
@@ -56,4 +102,65 @@
 
 .removeButton:hover {
   color: #b91c1c;
+}
+
+.inlineControls {
+  position: absolute;
+  top: -2rem;
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+  z-index: 260;
+}
+
+.block:hover .inlineControls,
+.block:focus-within .inlineControls,
+.blockActive .inlineControls {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.toneControls,
+.shapeControls {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.18rem;
+  border-radius: 999px;
+  border: 1px solid #d9e3ef;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 8px 18px rgba(13, 27, 44, 0.12);
+}
+
+.toneSwatch {
+  width: 0.85rem;
+  height: 0.85rem;
+  border-radius: 999px;
+  border: 1px solid rgba(30, 41, 59, 0.18);
+  padding: 0;
+  cursor: pointer;
+}
+
+.toneSwatchActive {
+  box-shadow: 0 0 0 2px #2f6fb7 inset;
+}
+
+.shapeButton {
+  border: 0;
+  background: transparent;
+  color: #243447;
+  font-size: 0.68rem;
+  line-height: 1;
+  padding: 0.25rem 0.35rem;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.shapeButtonActive {
+  background: #e9f1fb;
+  color: #174a86;
 }
