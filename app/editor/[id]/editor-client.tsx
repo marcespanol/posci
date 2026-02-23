@@ -9,9 +9,11 @@ import HeaderFooterEditors from "@/components/editor/HeaderFooterEditors";
 import MainBlocksEditor from "@/components/editor/MainBlocksEditor";
 import DownloadMenu from "@/components/editor/menus/DownloadMenu";
 import GeneralOptionsMenu from "@/components/editor/menus/GeneralOptionsMenu";
+import { usePosterEditorDocumentFacade } from "@/components/editor/usePosterEditorDocumentFacade";
 import { downloadPdfFromPngDataUrl } from "@/lib/poster/export-pdf";
 import { downloadPosterElementAsPng, renderPosterElementToPngDataUrl } from "@/lib/poster/export-png";
-import type { PosterDoc } from "@/lib/poster/types";
+import { toPersistablePosterSavePayload } from "@/lib/poster/persistence-adapter";
+import type { PosterDoc, PosterDocAny, PosterDocV2 } from "@/lib/poster/types";
 import { usePosterEditorStore } from "@/lib/store/poster-store";
 
 type LeftPanelMode = "text" | "theme" | "layout" | null;
@@ -19,23 +21,11 @@ type LeftPanelMode = "text" | "theme" | "layout" | null;
 interface EditorClientProps {
   posterId: string;
   updatedAt: string;
-  initialDoc: PosterDoc;
+  initialDoc: PosterDocAny;
 }
 
 const AUTOSAVE_IDLE_MS = 3000;
 const AUTOSAVE_MIN_INTERVAL_MS = 10000;
-
-const toPersistableDoc = (doc: PosterDoc): PosterDoc => {
-  return {
-    ...doc,
-    history: {
-      canUndo: false,
-      canRedo: false
-    }
-  };
-};
-
-const persistHash = (doc: PosterDoc): string => JSON.stringify(toPersistableDoc(doc));
 
 const formatDate = (value: string): string => {
   return new Intl.DateTimeFormat("en-US", {
@@ -45,7 +35,8 @@ const formatDate = (value: string): string => {
 };
 
 export default function EditorClient({ posterId, updatedAt, initialDoc }: EditorClientProps) {
-  const doc = usePosterEditorStore((state) => state.doc);
+  const documentFacade = usePosterEditorDocumentFacade();
+  const { doc, readDoc, gridModeDocV2, readTitle, persistableHash } = documentFacade;
   const isDirty = usePosterEditorStore((state) => state.isDirty);
   const initializePoster = usePosterEditorStore((state) => state.initializePoster);
   const resetPoster = usePosterEditorStore((state) => state.resetPoster);
@@ -67,8 +58,9 @@ export default function EditorClient({ posterId, updatedAt, initialDoc }: Editor
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latestDocRef = useRef<PosterDoc | null>(null);
-  const latestHashRef = useRef<string>(persistHash(initialDoc));
-  const lastSavedHashRef = useRef<string>(persistHash(initialDoc));
+  const latestGridModeDocV2Ref = useRef<PosterDocV2 | null>(null);
+  const latestHashRef = useRef<string>("");
+  const lastSavedHashRef = useRef<string>("");
   const lastSaveStartedAtRef = useRef<number>(0);
   const inFlightSaveRef = useRef(false);
   const queuedSaveRef = useRef(false);
@@ -76,10 +68,10 @@ export default function EditorClient({ posterId, updatedAt, initialDoc }: Editor
 
   useEffect(() => {
     initializePoster({ posterId, doc: initialDoc });
-    const initialHash = persistHash(initialDoc);
-    latestHashRef.current = initialHash;
-    lastSavedHashRef.current = initialHash;
-    latestDocRef.current = initialDoc;
+    latestHashRef.current = "";
+    lastSavedHashRef.current = "";
+    latestDocRef.current = null;
+    latestGridModeDocV2Ref.current = null;
     initializedPosterIdRef.current = posterId;
 
     return () => {
@@ -88,6 +80,7 @@ export default function EditorClient({ posterId, updatedAt, initialDoc }: Editor
       }
 
       resetPoster();
+      latestGridModeDocV2Ref.current = null;
       initializedPosterIdRef.current = null;
     };
     // initialize once per mounted editor session
@@ -100,8 +93,12 @@ export default function EditorClient({ posterId, updatedAt, initialDoc }: Editor
     }
 
     latestDocRef.current = doc;
-    latestHashRef.current = persistHash(doc);
-  }, [doc]);
+    latestGridModeDocV2Ref.current = gridModeDocV2;
+    latestHashRef.current = persistableHash;
+    if (!lastSavedHashRef.current) {
+      lastSavedHashRef.current = latestHashRef.current;
+    }
+  }, [doc, gridModeDocV2, persistableHash]);
 
   useEffect(() => {
     if (!isDirty) {
@@ -158,7 +155,8 @@ export default function EditorClient({ posterId, updatedAt, initialDoc }: Editor
 
   const persistLatest = useCallback(async () => {
     const activeDoc = latestDocRef.current;
-    if (!activeDoc) {
+    const activeGridModeDocV2 = latestGridModeDocV2Ref.current;
+    if (!activeDoc && !activeGridModeDocV2) {
       return;
     }
 
@@ -178,10 +176,11 @@ export default function EditorClient({ posterId, updatedAt, initialDoc }: Editor
     setSaveError(null);
 
     try {
+      const savePayload = toPersistablePosterSavePayload(activeDoc, activeGridModeDocV2);
       await savePosterAction({
         posterId,
-        title: activeDoc.meta.title,
-        doc: toPersistableDoc(activeDoc)
+        title: savePayload.title,
+        doc: savePayload.doc
       });
 
       lastSavedHashRef.current = saveHash;
@@ -244,7 +243,7 @@ export default function EditorClient({ posterId, updatedAt, initialDoc }: Editor
     return isDirty ? "Unsaved changes" : "Saved";
   }, [isDirty, isSaving, saveError]);
 
-  if (!doc) {
+  if (!doc || !readDoc) {
     return (
       <main className={styles.page}>
         <p className={styles.loading}>Loading editor state...</p>
@@ -261,7 +260,7 @@ export default function EditorClient({ posterId, updatedAt, initialDoc }: Editor
         <div className={styles.divider} />
         <input
           className={styles.posterTitleInput}
-          value={doc.meta.title}
+          value={readTitle}
           onChange={(event) => setMetaTitle(event.target.value)}
           aria-label="Poster title"
         />
@@ -290,7 +289,7 @@ export default function EditorClient({ posterId, updatedAt, initialDoc }: Editor
                   return;
                 }
 
-                const slug = doc.meta.title.trim().replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "") || "poster";
+                const slug = readTitle.trim().replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "") || "poster";
                 await downloadPosterElementAsPng(artboard, `${slug}.png`);
               } catch (error) {
                 const message = error instanceof Error ? error.message : "Failed to export poster";
@@ -311,7 +310,7 @@ export default function EditorClient({ posterId, updatedAt, initialDoc }: Editor
                 }
 
                 const dataUrl = await renderPosterElementToPngDataUrl(artboard);
-                const slug = doc.meta.title.trim().replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "") || "poster";
+                const slug = readTitle.trim().replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "") || "poster";
                 await downloadPdfFromPngDataUrl(dataUrl, `${slug}.pdf`);
               } catch (error) {
                 const message = error instanceof Error ? error.message : "Failed to export poster";

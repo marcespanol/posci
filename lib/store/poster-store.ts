@@ -1,11 +1,14 @@
 import { create } from "zustand";
 
+import { adaptPosterDocV2ToEditorV1, migratePosterDocToLatest, normalizePosterDocV2 } from "@/lib/poster/migrations";
 import type {
   ColorTheme,
   PosterBlock,
-  PosterColumnSegment,
   PosterDoc,
-  PosterMainLayout,
+  PosterDocAny,
+  PosterDocLatest,
+  PosterDocV2,
+  PosterMainRegion,
   PosterOrientation,
   PosterSizePreset,
   TipTapJsonContent,
@@ -14,7 +17,7 @@ import type {
 
 interface InitializePosterPayload {
   posterId: string;
-  doc: PosterDoc;
+  doc: PosterDocAny;
 }
 
 interface CommitOptions {
@@ -23,9 +26,7 @@ interface CommitOptions {
 }
 
 const cloneDoc = (doc: PosterDoc): PosterDoc => structuredClone(doc);
-const MIN_COLUMNS = 1;
-const MAX_COLUMNS = 5;
-const MAX_SEGMENTS_PER_COLUMN = 5;
+const cloneValue = <T>(value: T): T => structuredClone(value);
 const MAX_HISTORY = 100;
 
 const isTextualBlock = (
@@ -164,65 +165,13 @@ const withHistoryFlags = (doc: PosterDoc, canUndo: boolean, canRedo: boolean): P
   }
 });
 
-const normalizeColumnWidths = (layout: PosterMainLayout): PosterMainLayout => {
-  const count = layout.columnIds.length;
-  if (count === 0) {
-    return layout;
+const withHistoryFlagsV2 = (doc: PosterDocV2, canUndo: boolean, canRedo: boolean): PosterDocV2 => ({
+  ...doc,
+  history: {
+    canUndo,
+    canRedo
   }
-
-  const ratio = 1 / count;
-  const columns = { ...layout.columns };
-
-  layout.columnIds.forEach((columnId) => {
-    const column = columns[columnId];
-    if (!column) {
-      return;
-    }
-
-    columns[columnId] = {
-      ...column,
-      widthRatio: ratio
-    };
-  });
-
-  return {
-    ...layout,
-    columns
-  };
-};
-
-const ensureColumnHasSegment = (segments: PosterColumnSegment[]): PosterColumnSegment[] => {
-  if (segments.length > 0) {
-    return segments;
-  }
-
-  return [
-    {
-      id: createId("seg"),
-      blockIds: [],
-      heightRatio: 1
-    }
-  ];
-};
-
-const normalizeSegmentHeights = (segments: PosterColumnSegment[]): PosterColumnSegment[] => {
-  if (segments.length === 0) {
-    return segments;
-  }
-
-  const fallbackRatio = 1 / segments.length;
-  const rawRatios = segments.map((segment) =>
-    typeof segment.heightRatio === "number" && Number.isFinite(segment.heightRatio) && segment.heightRatio > 0
-      ? segment.heightRatio
-      : fallbackRatio
-  );
-  const total = rawRatios.reduce((acc, ratio) => acc + ratio, 0);
-
-  return segments.map((segment, index) => ({
-    ...segment,
-    heightRatio: rawRatios[index] / total
-  }));
-};
+});
 
 const normalizePosterDoc = (doc: PosterDoc): PosterDoc => {
   const nextMeta = {
@@ -239,7 +188,180 @@ const normalizePosterDoc = (doc: PosterDoc): PosterDoc => {
   return {
     ...doc,
     meta: nextMeta,
-    sections: nextSections
+    sections: nextSections,
+    experimental: {
+      ...doc.experimental,
+      mainEditorMode: "grid-v2"
+    }
+  };
+};
+
+const isPosterDocV2 = (doc: PosterDocAny): doc is PosterDocV2 => doc.version === 2;
+
+const prepareIncomingDocForCurrentEditor = (doc: PosterDocAny): PosterDocLatest => {
+  if (isPosterDocV2(doc)) {
+    return normalizePosterDoc(adaptPosterDocV2ToEditorV1(doc));
+  }
+
+  return normalizePosterDoc(cloneDoc(doc));
+};
+
+const regionsOverlap = (a: Pick<PosterMainRegion, "id" | "x" | "y" | "w" | "h">, b: Pick<PosterMainRegion, "id" | "x" | "y" | "w" | "h">): boolean => {
+  if (a.id === b.id) {
+    return false;
+  }
+
+  const xOverlap = a.x < b.x + b.w && a.x + a.w > b.x;
+  const yOverlap = a.y < b.y + b.h && a.y + a.h > b.y;
+  return xOverlap && yOverlap;
+};
+
+const clampPreviewRegionRect = (
+  rect: Pick<PosterMainRegion, "x" | "y" | "w" | "h">,
+  grid: { cols: number; rows: number }
+): Pick<PosterMainRegion, "x" | "y" | "w" | "h"> => {
+  const x = Math.max(0, Math.min(grid.cols - 1, Math.round(rect.x)));
+  const y = Math.max(0, Math.min(grid.rows - 1, Math.round(rect.y)));
+  const w = Math.max(1, Math.min(grid.cols - x, Math.round(rect.w)));
+  const h = Math.max(1, Math.min(grid.rows - y, Math.round(rect.h)));
+
+  return { x, y, w, h };
+};
+
+const syncGridModeDocV2Regions = (state: PosterEditorState, nextRegions: PosterMainRegion[]): PosterDocV2 | null => {
+  if (!state.gridModeDocV2) {
+    return null;
+  }
+
+  return normalizePosterDocV2({
+    ...state.gridModeDocV2,
+    sections: {
+      ...state.gridModeDocV2.sections,
+      main: {
+        ...state.gridModeDocV2.sections.main,
+        regions: structuredClone(nextRegions)
+      }
+    }
+  });
+};
+
+const deriveCompatibilityDocFromGridMode = (state: PosterEditorState, nextGridModeDocV2: PosterDocV2 | null): PosterDoc | null => {
+  if (!state.doc) {
+    return state.doc;
+  }
+
+  if (!nextGridModeDocV2) {
+    return state.doc;
+  }
+
+  return normalizePosterDoc(adaptPosterDocV2ToEditorV1(nextGridModeDocV2));
+};
+
+const getGridRegionsSource = (state: PosterEditorState): PosterMainRegion[] => {
+  return state.gridModeDocV2?.sections.main.regions ?? [];
+};
+
+const bootstrapGridModeDocV2FromRegions = (
+  state: PosterEditorState,
+  nextRegions: PosterMainRegion[]
+): PosterDocV2 | null => {
+  if (state.gridModeDocV2) {
+    return syncGridModeDocV2Regions(state, nextRegions);
+  }
+
+  if (!state.doc) {
+    return null;
+  }
+
+  const migrated = migratePosterDocToLatest(cloneValue(state.doc));
+  return normalizePosterDocV2({
+    ...migrated,
+    sections: {
+      ...migrated.sections,
+      main: {
+        ...migrated.sections.main,
+        regions: structuredClone(nextRegions)
+      }
+    }
+  });
+};
+
+const sameRegionLayout = (a: PosterMainRegion[], b: PosterMainRegion[]): boolean => {
+  if (a.length !== b.length) {
+    return false;
+  }
+
+  for (let index = 0; index < a.length; index += 1) {
+    const left = a[index];
+    const right = b[index];
+    if (!left || !right) {
+      return false;
+    }
+
+    if (
+      left.id !== right.id ||
+      left.x !== right.x ||
+      left.y !== right.y ||
+      left.w !== right.w ||
+      left.h !== right.h ||
+      left.blockId !== right.blockId
+    ) {
+      return false;
+    }
+  }
+
+  return true;
+};
+
+const commitGridModeMirrorMutation = (
+  state: PosterEditorState,
+  mutateV2: (doc: PosterDocV2) => PosterDocV2,
+  options?: CommitOptions
+): PosterEditorState => {
+  const baseV2 = state.gridModeDocV2
+    ? cloneValue(state.gridModeDocV2)
+    : migratePosterDocToLatest(cloneValue(state.doc as PosterDoc));
+  const nextGridModeDocV2 = normalizePosterDocV2(mutateV2(baseV2));
+  const groupKey = options?.groupKey;
+  const groupWindowMs = options?.groupWindowMs ?? 1200;
+  const now = Date.now();
+  const shouldGroup =
+    Boolean(groupKey) &&
+    state.gridHistoryGroupKey === groupKey &&
+    now - state.gridHistoryGroupAt <= groupWindowMs;
+
+  if (shouldGroup) {
+    const nextWithFlags = withHistoryFlagsV2(nextGridModeDocV2, state.gridHistoryPast.length > 0, false);
+    return {
+      ...state,
+      isDirty: true,
+      canUndo: state.gridHistoryPast.length > 0,
+      canRedo: false,
+      gridHistoryFuture: [],
+      gridHistoryGroupKey: groupKey ?? null,
+      gridHistoryGroupAt: now,
+      gridModeDocV2: nextWithFlags,
+      // Grid runtime reads from the v2 mirror; compatibility projection refreshes
+      // lazily at save/bootstrap/undo-redo boundaries.
+      doc: state.doc
+    };
+  }
+
+  const snapshot = cloneValue(baseV2);
+  const nextPast = [...state.gridHistoryPast, snapshot].slice(-MAX_HISTORY);
+  const nextWithFlags = withHistoryFlagsV2(nextGridModeDocV2, nextPast.length > 0, false);
+
+  return {
+    ...state,
+    isDirty: true,
+    canUndo: nextPast.length > 0,
+    canRedo: false,
+    gridHistoryPast: nextPast,
+    gridHistoryFuture: [],
+    gridHistoryGroupKey: groupKey ?? null,
+    gridHistoryGroupAt: now,
+    gridModeDocV2: nextWithFlags,
+    doc: state.doc
   };
 };
 
@@ -249,13 +371,15 @@ export interface PosterEditorState {
   isDirty: boolean;
   canUndo: boolean;
   canRedo: boolean;
-  historyPast: PosterDoc[];
-  historyFuture: PosterDoc[];
-  historyGroupKey: string | null;
-  historyGroupAt: number;
+  gridHistoryPast: PosterDocV2[];
+  gridHistoryFuture: PosterDocV2[];
+  gridHistoryGroupKey: string | null;
+  gridHistoryGroupAt: number;
+  gridModeDocV2: PosterDocV2 | null;
+  gridPreviewSelectedRegionId: string | null;
   initializePoster: (payload: InitializePosterPayload) => void;
   resetPoster: () => void;
-  setDoc: (doc: PosterDoc) => void;
+  setDoc: (doc: PosterDocAny) => void;
   setMetaTitle: (title: string) => void;
   setTypographyTheme: (theme: TypographyTheme) => void;
   setColorTheme: (theme: ColorTheme) => void;
@@ -270,67 +394,24 @@ export interface PosterEditorState {
   setFloatingBlockPosition: (blockId: string, x: number, y: number) => void;
   addFloatingParagraph: () => void;
   removeFloatingParagraph: (blockId: string) => void;
-  addColumn: () => void;
-  removeColumn: (columnId: string) => void;
-  setAdjacentColumnRatios: (leftColumnId: string, rightColumnId: string, leftRatio: number, rightRatio: number) => void;
-  setColumnLayoutRatios: (columnIds: string[], sizes: number[]) => void;
-  setAdjacentSegmentRatios: (
-    columnId: string,
-    topSegmentId: string,
-    bottomSegmentId: string,
-    topRatio: number,
-    bottomRatio: number
-  ) => void;
-  setColumnSegmentLayoutRatios: (columnId: string, segmentIds: string[], sizes: number[]) => void;
-  addSegment: (columnId: string) => void;
-  removeSegment: (columnId: string, segmentId: string) => void;
-  addImageBlockToSegment: (columnId: string, segmentId: string, assetId: string, src: string, alt: string) => void;
-  ensureColumnHasTextBlock: (columnId: string) => void;
+  initializeGridPreviewRegions: (regions: PosterMainRegion[]) => void;
+  selectGridPreviewRegion: (regionId: string | null) => void;
+  updateGridPreviewRegionRect: (
+    regionId: string,
+    rect: Pick<PosterMainRegion, "x" | "y" | "w" | "h">,
+    grid: { cols: number; rows: number }
+  ) => boolean;
+  splitGridPreviewRegionHorizontal: (regionId: string) => boolean;
+  splitGridPreviewRegionVertical: (regionId: string) => boolean;
+  moveGridPreviewRegionBy: (regionId: string, dx: number, dy: number) => boolean;
+  deleteGridPreviewRegion: (regionId: string) => boolean;
+  mergeGridPreviewRegionWithLeft: (regionId: string) => boolean;
+  mergeGridPreviewRegionWithRight: (regionId: string) => boolean;
+  createGridPreviewRegion: (rect: Pick<PosterMainRegion, "x" | "y" | "w" | "h">) => boolean;
   undo: () => void;
   redo: () => void;
   markSaved: () => void;
 }
-
-const commitMutation = (state: PosterEditorState, nextDoc: PosterDoc, options?: CommitOptions): PosterEditorState => {
-  const groupKey = options?.groupKey;
-  const groupWindowMs = options?.groupWindowMs ?? 1200;
-  const now = Date.now();
-  const shouldGroup =
-    Boolean(groupKey) &&
-    state.historyGroupKey === groupKey &&
-    now - state.historyGroupAt <= groupWindowMs;
-
-  if (shouldGroup) {
-    const nextHistoryDoc = withHistoryFlags(nextDoc, state.historyPast.length > 0, false);
-
-    return {
-      ...state,
-      isDirty: true,
-      canUndo: state.historyPast.length > 0,
-      canRedo: false,
-      historyFuture: [],
-      historyGroupKey: groupKey ?? null,
-      historyGroupAt: now,
-      doc: nextHistoryDoc
-    };
-  }
-
-  const snapshot = cloneDoc(state.doc as PosterDoc);
-  const nextPast = [...state.historyPast, snapshot].slice(-MAX_HISTORY);
-  const nextHistoryDoc = withHistoryFlags(nextDoc, nextPast.length > 0, false);
-
-  return {
-    ...state,
-    isDirty: true,
-    canUndo: nextPast.length > 0,
-    canRedo: false,
-    historyPast: nextPast,
-    historyFuture: [],
-    historyGroupKey: groupKey ?? null,
-    historyGroupAt: now,
-    doc: nextHistoryDoc
-  };
-};
 
 export const usePosterEditorStore = create<PosterEditorState>((set) => ({
   posterId: null,
@@ -338,23 +419,30 @@ export const usePosterEditorStore = create<PosterEditorState>((set) => ({
   isDirty: false,
   canUndo: false,
   canRedo: false,
-  historyPast: [],
-  historyFuture: [],
-  historyGroupKey: null,
-  historyGroupAt: 0,
+  gridHistoryPast: [],
+  gridHistoryFuture: [],
+  gridHistoryGroupKey: null,
+  gridHistoryGroupAt: 0,
+  gridModeDocV2: null,
+  gridPreviewSelectedRegionId: null,
 
   initializePoster: ({ posterId, doc }) => {
-    const normalizedDoc = normalizePosterDoc(cloneDoc(doc));
+    // Validate migrator at the store boundary while the v1 editor UI is still active.
+    // Once the grid editor lands, this boundary becomes the single switch to store v2 docs.
+    const latestDoc = migratePosterDocToLatest(cloneValue(doc));
+    const normalizedDoc = prepareIncomingDocForCurrentEditor(doc);
     set({
       posterId,
       doc: withHistoryFlags(normalizedDoc, false, false),
       isDirty: false,
       canUndo: false,
       canRedo: false,
-      historyPast: [],
-      historyFuture: [],
-      historyGroupKey: null,
-      historyGroupAt: 0
+      gridHistoryPast: [],
+      gridHistoryFuture: [],
+      gridHistoryGroupKey: null,
+      gridHistoryGroupAt: 0,
+      gridModeDocV2: latestDoc,
+      gridPreviewSelectedRegionId: null
     });
   },
 
@@ -365,10 +453,12 @@ export const usePosterEditorStore = create<PosterEditorState>((set) => ({
       isDirty: false,
       canUndo: false,
       canRedo: false,
-      historyPast: [],
-      historyFuture: [],
-      historyGroupKey: null,
-      historyGroupAt: 0
+      gridHistoryPast: [],
+      gridHistoryFuture: [],
+      gridHistoryGroupKey: null,
+      gridHistoryGroupAt: 0,
+      gridModeDocV2: null,
+      gridPreviewSelectedRegionId: null
     });
   },
 
@@ -378,7 +468,20 @@ export const usePosterEditorStore = create<PosterEditorState>((set) => ({
         return state;
       }
 
-      return commitMutation(state, cloneDoc(doc));
+      const latestDoc = migratePosterDocToLatest(cloneValue(doc));
+      const normalizedDoc = prepareIncomingDocForCurrentEditor(doc);
+      return {
+        ...state,
+        doc: withHistoryFlags(cloneDoc(normalizedDoc), false, false),
+        isDirty: false,
+        canUndo: false,
+        canRedo: false,
+        gridHistoryPast: [],
+        gridHistoryFuture: [],
+        gridHistoryGroupKey: null,
+        gridHistoryGroupAt: 0,
+        gridModeDocV2: latestDoc
+      };
     });
   },
 
@@ -387,14 +490,13 @@ export const usePosterEditorStore = create<PosterEditorState>((set) => ({
       if (!state.doc) {
         return state;
       }
-
-      return commitMutation(state, {
-        ...state.doc,
+      return commitGridModeMirrorMutation(state, (v2Doc) => ({
+        ...v2Doc,
         meta: {
-          ...state.doc.meta,
+          ...v2Doc.meta,
           title
         }
-      });
+      }));
     });
   },
 
@@ -403,14 +505,13 @@ export const usePosterEditorStore = create<PosterEditorState>((set) => ({
       if (!state.doc) {
         return state;
       }
-
-      return commitMutation(state, {
-        ...state.doc,
+      return commitGridModeMirrorMutation(state, (v2Doc) => ({
+        ...v2Doc,
         meta: {
-          ...state.doc.meta,
+          ...v2Doc.meta,
           typographyTheme: theme
         }
-      });
+      }));
     });
   },
 
@@ -419,14 +520,13 @@ export const usePosterEditorStore = create<PosterEditorState>((set) => ({
       if (!state.doc) {
         return state;
       }
-
-      return commitMutation(state, {
-        ...state.doc,
+      return commitGridModeMirrorMutation(state, (v2Doc) => ({
+        ...v2Doc,
         meta: {
-          ...state.doc.meta,
+          ...v2Doc.meta,
           colorTheme: theme
         }
-      });
+      }));
     });
   },
 
@@ -435,14 +535,13 @@ export const usePosterEditorStore = create<PosterEditorState>((set) => ({
       if (!state.doc) {
         return state;
       }
-
-      return commitMutation(state, {
-        ...state.doc,
+      return commitGridModeMirrorMutation(state, (v2Doc) => ({
+        ...v2Doc,
         meta: {
-          ...state.doc.meta,
+          ...v2Doc.meta,
           orientation
         }
-      });
+      }));
     });
   },
 
@@ -451,14 +550,13 @@ export const usePosterEditorStore = create<PosterEditorState>((set) => ({
       if (!state.doc) {
         return state;
       }
-
-      return commitMutation(state, {
-        ...state.doc,
+      return commitGridModeMirrorMutation(state, (v2Doc) => ({
+        ...v2Doc,
         meta: {
-          ...state.doc.meta,
+          ...v2Doc.meta,
           sizePreset: size
         }
-      });
+      }));
     });
   },
 
@@ -467,14 +565,13 @@ export const usePosterEditorStore = create<PosterEditorState>((set) => ({
       if (!state.doc) {
         return state;
       }
-
-      return commitMutation(state, {
-        ...state.doc,
+      return commitGridModeMirrorMutation(state, (v2Doc) => ({
+        ...v2Doc,
         meta: {
-          ...state.doc.meta,
-          footerVisible: !state.doc.meta.footerVisible
+          ...v2Doc.meta,
+          footerVisible: !v2Doc.meta.footerVisible
         }
-      });
+      }));
     });
   },
 
@@ -483,14 +580,13 @@ export const usePosterEditorStore = create<PosterEditorState>((set) => ({
       if (!state.doc) {
         return state;
       }
-
-      return commitMutation(state, {
-        ...state.doc,
+      return commitGridModeMirrorMutation(state, (v2Doc) => ({
+        ...v2Doc,
         meta: {
-          ...state.doc.meta,
-          headerSubtitleVisible: !(state.doc.meta.headerSubtitleVisible ?? true)
+          ...v2Doc.meta,
+          headerSubtitleVisible: !(v2Doc.meta.headerSubtitleVisible ?? true)
         }
-      });
+      }));
     });
   },
 
@@ -500,18 +596,18 @@ export const usePosterEditorStore = create<PosterEditorState>((set) => ({
         return state;
       }
 
-      return commitMutation(
+      return commitGridModeMirrorMutation(
         state,
-        {
-        ...state.doc,
-        sections: {
-          ...state.doc.sections,
-          header: {
-            ...state.doc.sections.header,
-            content
+        (v2Doc) => ({
+          ...v2Doc,
+          sections: {
+            ...v2Doc.sections,
+            header: {
+              ...v2Doc.sections.header,
+              content
+            }
           }
-        }
-      },
+        }),
         { groupKey: "header-content", groupWindowMs: 1200 }
       );
     });
@@ -523,17 +619,17 @@ export const usePosterEditorStore = create<PosterEditorState>((set) => ({
         return state;
       }
 
-      return commitMutation(
+      return commitGridModeMirrorMutation(
         state,
-        {
-          ...state.doc,
+        (v2Doc) => ({
+          ...v2Doc,
           sections: {
-            ...state.doc.sections,
+            ...v2Doc.sections,
             headerSubtitle: {
               content
             }
           }
-        },
+        }),
         { groupKey: "header-subtitle-content", groupWindowMs: 1200 }
       );
     });
@@ -545,18 +641,18 @@ export const usePosterEditorStore = create<PosterEditorState>((set) => ({
         return state;
       }
 
-      return commitMutation(
+      return commitGridModeMirrorMutation(
         state,
-        {
-        ...state.doc,
-        sections: {
-          ...state.doc.sections,
-          footer: {
-            ...state.doc.sections.footer,
-            content
+        (v2Doc) => ({
+          ...v2Doc,
+          sections: {
+            ...v2Doc.sections,
+            footer: {
+              ...v2Doc.sections.footer,
+              content
+            }
           }
-        }
-      },
+        }),
         { groupKey: "footer-content", groupWindowMs: 1200 }
       );
     });
@@ -579,18 +675,25 @@ export const usePosterEditorStore = create<PosterEditorState>((set) => ({
           : content;
       const safeContent = structuredClone(normalizedContent);
 
-      return commitMutation(
+      return commitGridModeMirrorMutation(
         state,
-        {
-        ...state.doc,
-        blocks: {
-          ...state.doc.blocks,
-          [blockId]: {
-            ...block,
-            content: safeContent
+        (v2Doc) => {
+          const targetBlock = v2Doc.blocks[blockId];
+          if (!targetBlock || !isTextualBlock(targetBlock)) {
+            return v2Doc;
           }
-        }
-      },
+
+          return {
+            ...v2Doc,
+            blocks: {
+              ...v2Doc.blocks,
+              [blockId]: {
+                ...targetBlock,
+                content: safeContent
+              }
+            }
+          };
+        },
         { groupKey: `block-content:${blockId}`, groupWindowMs: 1200 }
       );
     });
@@ -607,18 +710,25 @@ export const usePosterEditorStore = create<PosterEditorState>((set) => ({
         return state;
       }
 
-      return commitMutation(
+      return commitGridModeMirrorMutation(
         state,
-        {
-        ...state.doc,
-        blocks: {
-          ...state.doc.blocks,
-          [blockId]: {
-            ...block,
-            position: { x, y }
+        (v2Doc) => {
+          const v2Block = v2Doc.blocks[blockId];
+          if (!v2Block || v2Block.type !== "floatingParagraph") {
+            return v2Doc;
           }
-        }
-      },
+
+          return {
+            ...v2Doc,
+            blocks: {
+              ...v2Doc.blocks,
+              [blockId]: {
+                ...v2Block,
+                position: { x, y }
+              }
+            }
+          };
+        },
         { groupKey: `floating-position:${blockId}`, groupWindowMs: 250 }
       );
     });
@@ -633,10 +743,10 @@ export const usePosterEditorStore = create<PosterEditorState>((set) => ({
       const floatingCount = Object.values(state.doc.blocks).filter((block) => block.type === "floatingParagraph").length;
       const blockId = createId("floating");
 
-      return commitMutation(state, {
-        ...state.doc,
+      return commitGridModeMirrorMutation(state, (v2Doc) => ({
+        ...v2Doc,
         blocks: {
-          ...state.doc.blocks,
+          ...v2Doc.blocks,
           [blockId]: {
             id: blockId,
             type: "floatingParagraph",
@@ -647,7 +757,7 @@ export const usePosterEditorStore = create<PosterEditorState>((set) => ({
             content: createDefaultTextContent()
           }
         }
-      });
+      }));
     });
   },
 
@@ -662,627 +772,471 @@ export const usePosterEditorStore = create<PosterEditorState>((set) => ({
         return state;
       }
 
-      const nextBlocks = { ...state.doc.blocks };
-      delete nextBlocks[blockId];
-
-      return commitMutation(state, {
-        ...state.doc,
-        blocks: nextBlocks
-      });
-    });
-  },
-
-  addColumn: () => {
-    set((state) => {
-      if (!state.doc) {
-        return state;
-      }
-
-      const currentIds = state.doc.sections.main.columnIds;
-      if (currentIds.length >= MAX_COLUMNS) {
-        return state;
-      }
-
-      const columnId = createId("col");
-      const topSegmentId = createId("seg");
-      const bottomSegmentId = createId("seg");
-      const topBlockId = createId("block");
-      const bottomBlockId = createId("block");
-
-      const nextLayout = normalizeColumnWidths({
-        columnIds: [...currentIds, columnId],
-        columns: {
-          ...state.doc.sections.main.columns,
-          [columnId]: {
-            id: columnId,
-            widthRatio: 0,
-            segments: [
-              {
-                id: topSegmentId,
-                blockIds: [topBlockId],
-                heightRatio: 0.5
-              },
-              {
-                id: bottomSegmentId,
-                blockIds: [bottomBlockId],
-                heightRatio: 0.5
-              }
-            ]
-          }
-        }
-      });
-
-      return commitMutation(state, {
-        ...state.doc,
-        sections: {
-          ...state.doc.sections,
-          main: nextLayout
-        },
-        blocks: {
-          ...state.doc.blocks,
-          [topBlockId]: {
-            id: topBlockId,
-            type: "text",
-            content: createDefaultTextContent("New Section")
-          },
-          [bottomBlockId]: {
-            id: bottomBlockId,
-            type: "text",
-            content: createDefaultTextContent()
-          }
-        }
-      });
-    });
-  },
-
-  removeColumn: (columnId) => {
-    set((state) => {
-      if (!state.doc) {
-        return state;
-      }
-
-      const currentIds = state.doc.sections.main.columnIds;
-      if (currentIds.length <= MIN_COLUMNS || !currentIds.includes(columnId)) {
-        return state;
-      }
-
-      const removedIndex = currentIds.indexOf(columnId);
-      const targetColumnId = currentIds[removedIndex - 1] ?? currentIds[removedIndex + 1];
-      if (!targetColumnId) {
-        return state;
-      }
-
-      const removedColumn = state.doc.sections.main.columns[columnId];
-      const targetColumn = state.doc.sections.main.columns[targetColumnId];
-      if (!removedColumn || !targetColumn) {
-        return state;
-      }
-
-      const incomingBlockIds = removedColumn.segments.flatMap((segment) => segment.blockIds);
-      const targetSegments = ensureColumnHasSegment([...targetColumn.segments]);
-      targetSegments[0] = {
-        ...targetSegments[0],
-        blockIds: [...targetSegments[0].blockIds, ...incomingBlockIds]
-      };
-
-      const remainingIds = currentIds.filter((id) => id !== columnId);
-      const remainingColumns = { ...state.doc.sections.main.columns };
-      delete remainingColumns[columnId];
-      remainingColumns[targetColumnId] = {
-        ...targetColumn,
-        segments: targetSegments
-      };
-
-      const nextLayout = normalizeColumnWidths({
-        columnIds: remainingIds,
-        columns: remainingColumns
-      });
-
-      return commitMutation(state, {
-        ...state.doc,
-        sections: {
-          ...state.doc.sections,
-          main: nextLayout
-        }
-      });
-    });
-  },
-
-  setAdjacentColumnRatios: (leftColumnId, rightColumnId, leftRatio, rightRatio) => {
-    set((state) => {
-      if (!state.doc) {
-        return state;
-      }
-
-      const leftColumn = state.doc.sections.main.columns[leftColumnId];
-      const rightColumn = state.doc.sections.main.columns[rightColumnId];
-      if (!leftColumn || !rightColumn) {
-        return state;
-      }
-
-      if (leftRatio <= 0 || rightRatio <= 0) {
-        return state;
-      }
-
-      return commitMutation(state, {
-        ...state.doc,
-        sections: {
-          ...state.doc.sections,
-          main: {
-            ...state.doc.sections.main,
-            columns: {
-              ...state.doc.sections.main.columns,
-              [leftColumnId]: {
-                ...leftColumn,
-                widthRatio: leftRatio
-              },
-              [rightColumnId]: {
-                ...rightColumn,
-                widthRatio: rightRatio
-              }
-            }
-          }
-        }
-      });
-    });
-  },
-
-  setColumnLayoutRatios: (columnIds, sizes) => {
-    set((state) => {
-      if (!state.doc || columnIds.length === 0 || columnIds.length !== sizes.length) {
-        return state;
-      }
-
-      const nextColumns = { ...state.doc.sections.main.columns };
-      let changed = false;
-
-      columnIds.forEach((columnId, index) => {
-        const column = nextColumns[columnId];
-        if (!column) {
-          return;
+      return commitGridModeMirrorMutation(state, (v2Doc) => {
+        const v2Block = v2Doc.blocks[blockId];
+        if (!v2Block || v2Block.type !== "floatingParagraph") {
+          return v2Doc;
         }
 
-        const nextRatio = Math.max(0, sizes[index] / 100);
-        if (Math.abs(column.widthRatio - nextRatio) < 0.0001) {
-          return;
-        }
+        const nextV2Blocks = { ...v2Doc.blocks };
+        delete nextV2Blocks[blockId];
 
-        nextColumns[columnId] = {
-          ...column,
-          widthRatio: nextRatio
-        };
-        changed = true;
-      });
-
-      if (!changed) {
-        return state;
-      }
-
-      return commitMutation(state, {
-        ...state.doc,
-        sections: {
-          ...state.doc.sections,
-          main: {
-            ...state.doc.sections.main,
-            columns: nextColumns
-          }
-        }
-      });
-    });
-  },
-
-  setAdjacentSegmentRatios: (columnId, topSegmentId, bottomSegmentId, topRatio, bottomRatio) => {
-    set((state) => {
-      if (!state.doc) {
-        return state;
-      }
-
-      const column = state.doc.sections.main.columns[columnId];
-      if (!column) {
-        return state;
-      }
-
-      const topSegment = column.segments.find((segment) => segment.id === topSegmentId);
-      const bottomSegment = column.segments.find((segment) => segment.id === bottomSegmentId);
-      if (!topSegment || !bottomSegment) {
-        return state;
-      }
-
-      if (topRatio <= 0 || bottomRatio <= 0) {
-        return state;
-      }
-
-      const nextSegments = column.segments.map((segment) => {
-        if (segment.id === topSegmentId) {
-          return {
-            ...segment,
-            heightRatio: topRatio
-          };
-        }
-
-        if (segment.id === bottomSegmentId) {
-          return {
-            ...segment,
-            heightRatio: bottomRatio
-          };
-        }
-
-        return segment;
-      });
-
-      return commitMutation(state, {
-        ...state.doc,
-        sections: {
-          ...state.doc.sections,
-          main: {
-            ...state.doc.sections.main,
-            columns: {
-              ...state.doc.sections.main.columns,
-              [columnId]: {
-                ...column,
-                segments: nextSegments
-              }
-            }
-          }
-        }
-      });
-    });
-  },
-
-  setColumnSegmentLayoutRatios: (columnId, segmentIds, sizes) => {
-    set((state) => {
-      if (!state.doc || segmentIds.length === 0 || segmentIds.length !== sizes.length) {
-        return state;
-      }
-
-      const column = state.doc.sections.main.columns[columnId];
-      if (!column) {
-        return state;
-      }
-
-      let changed = false;
-      const nextSegments = column.segments.map((segment) => {
-        const index = segmentIds.indexOf(segment.id);
-        if (index < 0) {
-          return segment;
-        }
-
-        const nextRatio = Math.max(0, sizes[index] / 100);
-        const prevRatio = segment.heightRatio ?? 0;
-        if (Math.abs(prevRatio - nextRatio) < 0.0001) {
-          return segment;
-        }
-
-        changed = true;
         return {
-          ...segment,
-          heightRatio: nextRatio
+          ...v2Doc,
+          blocks: nextV2Blocks
         };
       });
-
-      if (!changed) {
-        return state;
-      }
-
-      return commitMutation(state, {
-        ...state.doc,
-        sections: {
-          ...state.doc.sections,
-          main: {
-            ...state.doc.sections.main,
-            columns: {
-              ...state.doc.sections.main.columns,
-              [columnId]: {
-                ...column,
-                segments: nextSegments
-              }
-            }
-          }
-        }
-      });
     });
   },
 
-  addSegment: (columnId) => {
+  initializeGridPreviewRegions: (regions) => {
     set((state) => {
-      if (!state.doc) {
+      const nextRegions = structuredClone(regions);
+      const currentSourceRegions = getGridRegionsSource(state);
+      const selectedRegionId =
+        state.gridPreviewSelectedRegionId && nextRegions.some((region) => region.id === state.gridPreviewSelectedRegionId)
+          ? state.gridPreviewSelectedRegionId
+          : (nextRegions[0]?.id ?? null);
+
+      if (state.gridModeDocV2) {
+        const mirrorRegions = state.gridModeDocV2.sections.main.regions;
+        const mirrorSelectedRegionId =
+          state.gridPreviewSelectedRegionId && mirrorRegions.some((region) => region.id === state.gridPreviewSelectedRegionId)
+            ? state.gridPreviewSelectedRegionId
+            : (mirrorRegions[0]?.id ?? null);
+
+        if (state.gridPreviewSelectedRegionId === mirrorSelectedRegionId) {
+          return state;
+        }
+
+        return {
+          ...state,
+          gridPreviewSelectedRegionId: mirrorSelectedRegionId
+        };
+      }
+
+      if (sameRegionLayout(currentSourceRegions, nextRegions) && state.gridPreviewSelectedRegionId === selectedRegionId) {
         return state;
       }
 
-      const column = state.doc.sections.main.columns[columnId];
-      if (!column) {
-        return state;
-      }
-      if (column.segments.length >= MAX_SEGMENTS_PER_COLUMN) {
+      const nextGridModeDocV2 = bootstrapGridModeDocV2FromRegions(state, nextRegions);
+
+      return {
+        ...state,
+        gridModeDocV2: nextGridModeDocV2,
+        // Bootstrap/migration fallback: seed the compatibility projection once
+        // when the canonical grid mirror is created from incoming regions.
+        doc: deriveCompatibilityDocFromGridMode(state, nextGridModeDocV2),
+        gridPreviewSelectedRegionId: selectedRegionId
+      };
+    });
+  },
+
+  selectGridPreviewRegion: (regionId) => {
+    set((state) => ({
+      ...state,
+      gridPreviewSelectedRegionId: regionId
+    }));
+  },
+
+  updateGridPreviewRegionRect: (regionId, rect, grid) => {
+    let updated = false;
+
+    set((state) => {
+      const sourceRegions = getGridRegionsSource(state);
+      const target = sourceRegions.find((region) => region.id === regionId);
+      if (!target) {
         return state;
       }
 
-      const segmentId = createId("seg");
-      const blockId = createId("block");
+      const clamped = clampPreviewRegionRect(rect, grid);
+      if (
+        target.x === clamped.x &&
+        target.y === clamped.y &&
+        target.w === clamped.w &&
+        target.h === clamped.h
+      ) {
+        return state;
+      }
 
-      const updatedColumn = {
-        ...column,
-        segments: normalizeSegmentHeights([
-          ...column.segments,
-          {
-            id: segmentId,
-            blockIds: [blockId],
-            heightRatio: 1
-          }
-        ])
+      const candidate: PosterMainRegion = {
+        ...target,
+        ...clamped
       };
 
-      return commitMutation(state, {
-        ...state.doc,
-        sections: {
-          ...state.doc.sections,
-          main: {
-            ...state.doc.sections.main,
-            columns: {
-              ...state.doc.sections.main.columns,
-              [columnId]: updatedColumn
-            }
-          }
+      if (sourceRegions.some((region) => regionsOverlap(candidate, region))) {
+        return state;
+      }
+
+      updated = true;
+      const nextRegions = sourceRegions.map((region) => (region.id === regionId ? candidate : region));
+      const nextGridModeDocV2 = syncGridModeDocV2Regions(state, nextRegions);
+      return {
+        ...state,
+        isDirty: true,
+        gridModeDocV2: nextGridModeDocV2,
+        // Grid resize can fire continuously while dragging; avoid rebuilding the
+        // v1 compatibility projection on every pointer move.
+        doc: state.doc
+      };
+    });
+
+    return updated;
+  },
+
+  splitGridPreviewRegionHorizontal: (regionId) => {
+    let changed = false;
+
+    set((state) => {
+      const sourceRegions = getGridRegionsSource(state);
+      const region = sourceRegions.find((item) => item.id === regionId);
+      if (!region || region.h < 2) {
+        return state;
+      }
+
+      const topH = Math.max(1, Math.floor(region.h / 2));
+      const bottomH = region.h - topH;
+      if (bottomH < 1) {
+        return state;
+      }
+
+      const topRegion: PosterMainRegion = {
+        ...region,
+        h: topH
+      };
+      const bottomRegion: PosterMainRegion = {
+        ...region,
+        id: createId("v2r"),
+        y: region.y + topH,
+        h: bottomH
+      };
+
+      changed = true;
+      const nextRegions = sourceRegions.flatMap((item) =>
+        item.id === regionId ? [topRegion, bottomRegion] : [item]
+      );
+      const nextGridModeDocV2 = syncGridModeDocV2Regions(state, nextRegions);
+      return {
+        ...state,
+        isDirty: true,
+        gridModeDocV2: nextGridModeDocV2,
+        doc: state.doc,
+        gridPreviewSelectedRegionId: topRegion.id
+      };
+    });
+
+    return changed;
+  },
+
+  splitGridPreviewRegionVertical: (regionId) => {
+    let changed = false;
+
+    set((state) => {
+      const sourceRegions = getGridRegionsSource(state);
+      const region = sourceRegions.find((item) => item.id === regionId);
+      if (!region || region.w < 2) {
+        return state;
+      }
+
+      const leftW = Math.max(1, Math.floor(region.w / 2));
+      const rightW = region.w - leftW;
+      if (rightW < 1) {
+        return state;
+      }
+
+      const leftRegion: PosterMainRegion = {
+        ...region,
+        w: leftW
+      };
+      const rightRegion: PosterMainRegion = {
+        ...region,
+        id: createId("v2r"),
+        x: region.x + leftW,
+        w: rightW
+      };
+
+      changed = true;
+      const nextRegions = sourceRegions.flatMap((item) =>
+        item.id === regionId ? [leftRegion, rightRegion] : [item]
+      );
+      const nextGridModeDocV2 = syncGridModeDocV2Regions(state, nextRegions);
+      return {
+        ...state,
+        isDirty: true,
+        gridModeDocV2: nextGridModeDocV2,
+        doc: state.doc,
+        gridPreviewSelectedRegionId: leftRegion.id
+      };
+    });
+
+    return changed;
+  },
+
+  moveGridPreviewRegionBy: (regionId, dx, dy) => {
+    let changed = false;
+
+    set((state) => {
+      const sourceRegions = getGridRegionsSource(state);
+      const region = sourceRegions.find((item) => item.id === regionId);
+      if (!region) {
+        return state;
+      }
+
+      const nextRect = clampPreviewRegionRect(
+        {
+          x: region.x + dx,
+          y: region.y + dy,
+          w: region.w,
+          h: region.h
         },
-        blocks: {
-          ...state.doc.blocks,
-          [blockId]: {
-            id: blockId,
-            type: "text",
-            content: createDefaultTextContent()
-          }
-        }
-      });
+        { cols: 24, rows: 12 }
+      );
+
+      if (nextRect.x === region.x && nextRect.y === region.y && nextRect.w === region.w && nextRect.h === region.h) {
+        return state;
+      }
+
+      const candidate: PosterMainRegion = { ...region, ...nextRect };
+      if (sourceRegions.some((item) => regionsOverlap(candidate, item))) {
+        return state;
+      }
+
+      const nextRegions = sourceRegions.map((item) => (item.id === regionId ? candidate : item));
+      changed = true;
+      const nextGridModeDocV2 = syncGridModeDocV2Regions(state, nextRegions);
+      return {
+        ...state,
+        isDirty: true,
+        gridModeDocV2: nextGridModeDocV2,
+        // Grid move can fire continuously while dragging; keep compatibility doc
+        // stale until a discrete action/save path needs it.
+        doc: state.doc,
+        gridPreviewSelectedRegionId: regionId
+      };
     });
+
+    return changed;
   },
 
-  removeSegment: (columnId, segmentId) => {
+  deleteGridPreviewRegion: (regionId) => {
+    let changed = false;
+
     set((state) => {
-      if (!state.doc) {
+      const sourceRegions = getGridRegionsSource(state);
+      const region = sourceRegions.find((item) => item.id === regionId);
+      if (!region || sourceRegions.length <= 1) {
         return state;
       }
 
-      const column = state.doc.sections.main.columns[columnId];
-      if (!column || column.segments.length <= 1) {
-        return state;
-      }
+      const nextRegions = sourceRegions.filter((item) => item.id !== regionId);
+      const nextSelected = nextRegions[0]?.id ?? null;
+      changed = true;
+      const nextGridModeDocV2 = syncGridModeDocV2Regions(state, nextRegions);
 
-      const segmentIndex = column.segments.findIndex((segment) => segment.id === segmentId);
-      if (segmentIndex < 0) {
-        return state;
-      }
-
-      const targetSegmentId =
-        segmentIndex > 0 ? column.segments[segmentIndex - 1]?.id : column.segments[segmentIndex + 1]?.id;
-      if (!targetSegmentId) {
-        return state;
-      }
-      const removedSegment = column.segments[segmentIndex];
-
-      const nextSegments = column.segments
-        .filter((segment) => segment.id !== segmentId)
-        .map((segment) => {
-          if (segment.id !== targetSegmentId) {
-            return segment;
-          }
-
-          return {
-            ...segment,
-            blockIds: [...segment.blockIds, ...removedSegment.blockIds]
-          };
-        });
-      const normalizedSegments = normalizeSegmentHeights(nextSegments);
-
-      return commitMutation(state, {
-        ...state.doc,
-        sections: {
-          ...state.doc.sections,
-          main: {
-            ...state.doc.sections.main,
-            columns: {
-              ...state.doc.sections.main.columns,
-              [columnId]: {
-                ...column,
-                segments: normalizedSegments
-              }
-            }
-          }
-        }
-      });
+      return {
+        ...state,
+        isDirty: true,
+        gridModeDocV2: nextGridModeDocV2,
+        doc: state.doc,
+        gridPreviewSelectedRegionId: nextSelected
+      };
     });
+
+    return changed;
   },
 
-  addImageBlockToSegment: (columnId, segmentId, assetId, src, alt) => {
+  mergeGridPreviewRegionWithLeft: (regionId) => {
+    let changed = false;
+
     set((state) => {
-      if (!state.doc) {
+      const sourceRegions = getGridRegionsSource(state);
+      const region = sourceRegions.find((item) => item.id === regionId);
+      if (!region) {
         return state;
       }
 
-      const column = state.doc.sections.main.columns[columnId];
-      if (!column) {
+      const leftNeighbor = sourceRegions.find(
+        (item) => item.id !== region.id && item.x + item.w === region.x && item.y === region.y && item.h === region.h
+      );
+      if (!leftNeighbor) {
         return state;
       }
 
-      const segment = column.segments.find((item) => item.id === segmentId);
-      if (!segment) {
+      const merged: PosterMainRegion = {
+        ...leftNeighbor,
+        w: leftNeighbor.w + region.w
+      };
+      const nextRegions = sourceRegions
+        .filter((item) => item.id !== region.id)
+        .map((item) => (item.id === leftNeighbor.id ? merged : item));
+
+      changed = true;
+      const nextGridModeDocV2 = syncGridModeDocV2Regions(state, nextRegions);
+      return {
+        ...state,
+        isDirty: true,
+        gridModeDocV2: nextGridModeDocV2,
+        doc: state.doc,
+        gridPreviewSelectedRegionId: merged.id
+      };
+    });
+
+    return changed;
+  },
+
+  mergeGridPreviewRegionWithRight: (regionId) => {
+    let changed = false;
+
+    set((state) => {
+      const sourceRegions = getGridRegionsSource(state);
+      const region = sourceRegions.find((item) => item.id === regionId);
+      if (!region) {
         return state;
       }
 
-      const blockId = createId("img");
+      const rightNeighbor = sourceRegions.find(
+        (item) => item.id !== region.id && item.x === region.x + region.w && item.y === region.y && item.h === region.h
+      );
+      if (!rightNeighbor) {
+        return state;
+      }
 
-      const nextSegments = column.segments.map((item) => {
-        if (item.id !== segmentId) {
+      const merged: PosterMainRegion = {
+        ...region,
+        w: region.w + rightNeighbor.w
+      };
+      const nextRegions = sourceRegions.filter((item) => item.id !== rightNeighbor.id).map((item) => {
+        if (item.id !== region.id) {
           return item;
         }
 
-        return {
-          ...item,
-          blockIds: [...item.blockIds, blockId]
-        };
+        return merged;
       });
 
-      return commitMutation(state, {
-        ...state.doc,
-        sections: {
-          ...state.doc.sections,
-          main: {
-            ...state.doc.sections.main,
-            columns: {
-              ...state.doc.sections.main.columns,
-              [columnId]: {
-                ...column,
-                segments: nextSegments
-              }
-            }
-          }
-        },
-        blocks: {
-          ...state.doc.blocks,
-          [blockId]: {
-            id: blockId,
-            type: "image",
-            assetId,
-            src,
-            alt
-          }
-        }
-      });
+      changed = true;
+      const nextGridModeDocV2 = syncGridModeDocV2Regions(state, nextRegions);
+      return {
+        ...state,
+        isDirty: true,
+        gridModeDocV2: nextGridModeDocV2,
+        doc: state.doc,
+        gridPreviewSelectedRegionId: merged.id
+      };
     });
+
+    return changed;
   },
 
-  ensureColumnHasTextBlock: (columnId) => {
+  createGridPreviewRegion: (rect) => {
+    let changed = false;
+
     set((state) => {
       if (!state.doc) {
         return state;
       }
 
-      const column = state.doc.sections.main.columns[columnId];
-      if (!column) {
+      const sourceRegions = getGridRegionsSource(state);
+      const clamped = clampPreviewRegionRect(rect, { cols: 24, rows: 12 });
+      if (clamped.w < 1 || clamped.h < 1) {
         return state;
       }
-      let changed = false;
-      let nextBlocks = { ...state.doc.blocks };
-      let nextSegments = ensureColumnHasSegment([...column.segments]).map((segment) => ({ ...segment }));
 
-      if (nextSegments.length > MAX_SEGMENTS_PER_COLUMN) {
-        const kept = nextSegments.slice(0, MAX_SEGMENTS_PER_COLUMN);
-        const overflowBlocks = nextSegments.slice(MAX_SEGMENTS_PER_COLUMN).flatMap((segment) => segment.blockIds);
-        const lastKept = kept[kept.length - 1];
+      const regionId = createId("v2r");
+      const blockId = createId("block");
+      const candidate: PosterMainRegion = {
+        id: regionId,
+        kind: "content",
+        x: clamped.x,
+        y: clamped.y,
+        w: clamped.w,
+        h: clamped.h,
+        blockId
+      };
 
-        nextSegments = kept.map((segment, index) => {
-          if (!lastKept || index !== kept.length - 1) {
-            return segment;
-          }
-
-          return {
-            ...segment,
-            blockIds: [...segment.blockIds, ...overflowBlocks]
-          };
-        });
-        changed = true;
+      if (sourceRegions.some((region) => regionsOverlap(candidate, region))) {
+        return state;
       }
 
-      nextSegments = nextSegments.map((segment) => {
-        const hasTextBlock = segment.blockIds.some((blockId) => nextBlocks[blockId]?.type === "text");
-        if (hasTextBlock) {
-          return segment;
-        }
-
-        const blockId = createId("block");
-        nextBlocks = {
-          ...nextBlocks,
+      const nextState = commitGridModeMirrorMutation(state, (v2Doc) => ({
+        ...v2Doc,
+        sections: {
+          ...v2Doc.sections,
+          main: {
+            ...v2Doc.sections.main,
+            regions: [...v2Doc.sections.main.regions, candidate]
+          }
+        },
+        blocks: {
+          ...v2Doc.blocks,
           [blockId]: {
             id: blockId,
             type: "text",
             content: createDefaultTextContent()
           }
-        };
-        changed = true;
+        }
+      }));
 
-        return {
-          ...segment,
-          blockIds: [...segment.blockIds, blockId]
-        };
-      });
-
-      const hasInvalidHeight = nextSegments.some(
-        (segment) =>
-          typeof segment.heightRatio !== "number" || !Number.isFinite(segment.heightRatio) || (segment.heightRatio ?? 0) <= 0
-      );
-      const totalHeight = nextSegments.reduce((acc, segment) => acc + (segment.heightRatio ?? 0), 0);
-      if (hasInvalidHeight || Math.abs(totalHeight - 1) > 0.0001) {
-        nextSegments = normalizeSegmentHeights(nextSegments);
-        changed = true;
-      }
-
-      if (!changed) {
-        return state;
-      }
-
-      return commitMutation(state, {
-        ...state.doc,
-        sections: {
-          ...state.doc.sections,
-          main: {
-            ...state.doc.sections.main,
-            columns: {
-              ...state.doc.sections.main.columns,
-              [columnId]: {
-                ...column,
-                segments: nextSegments
-              }
-            }
-          }
-        },
-        blocks: nextBlocks
-      });
+      changed = true;
+      return {
+        ...nextState,
+        gridPreviewSelectedRegionId: regionId
+      };
     });
+
+    return changed;
   },
 
   undo: () => {
     set((state) => {
-      if (!state.doc || state.historyPast.length === 0) {
+      if (!state.gridModeDocV2 || state.gridHistoryPast.length === 0) {
         return state;
       }
 
-      const previous = state.historyPast[state.historyPast.length - 1];
-      const nextPast = state.historyPast.slice(0, -1);
-      const currentSnapshot = cloneDoc(state.doc);
-      const nextFuture = [currentSnapshot, ...state.historyFuture].slice(0, MAX_HISTORY);
+      const previous = state.gridHistoryPast[state.gridHistoryPast.length - 1];
+      const nextPast = state.gridHistoryPast.slice(0, -1);
+      const currentSnapshot = cloneValue(state.gridModeDocV2);
+      const nextFuture = [currentSnapshot, ...state.gridHistoryFuture].slice(0, MAX_HISTORY);
+      const previousWithFlags = withHistoryFlagsV2(cloneValue(previous), nextPast.length > 0, nextFuture.length > 0);
+      const nextCompatibilityDoc = deriveCompatibilityDocFromGridMode(state, previousWithFlags) ?? state.doc;
 
       return {
         ...state,
         isDirty: true,
         canUndo: nextPast.length > 0,
         canRedo: nextFuture.length > 0,
-        historyPast: nextPast,
-        historyFuture: nextFuture,
-        historyGroupKey: null,
-        historyGroupAt: 0,
-        doc: withHistoryFlags(cloneDoc(previous), nextPast.length > 0, nextFuture.length > 0)
+        gridHistoryPast: nextPast,
+        gridHistoryFuture: nextFuture,
+        gridHistoryGroupKey: null,
+        gridHistoryGroupAt: 0,
+        gridModeDocV2: previousWithFlags,
+        doc: nextCompatibilityDoc
       };
     });
   },
 
   redo: () => {
     set((state) => {
-      if (!state.doc || state.historyFuture.length === 0) {
+      if (!state.gridModeDocV2 || state.gridHistoryFuture.length === 0) {
         return state;
       }
 
-      const [next, ...remainingFuture] = state.historyFuture;
-      const nextPast = [...state.historyPast, cloneDoc(state.doc)].slice(-MAX_HISTORY);
+      const [next, ...remainingFuture] = state.gridHistoryFuture;
+      const current = state.gridModeDocV2;
+      const nextPast = [...state.gridHistoryPast, cloneValue(current)].slice(-MAX_HISTORY);
+      const nextWithFlags = withHistoryFlagsV2(cloneValue(next), nextPast.length > 0, remainingFuture.length > 0);
+      const nextCompatibilityDoc = deriveCompatibilityDocFromGridMode(state, nextWithFlags) ?? state.doc;
 
       return {
         ...state,
         isDirty: true,
         canUndo: nextPast.length > 0,
         canRedo: remainingFuture.length > 0,
-        historyPast: nextPast,
-        historyFuture: remainingFuture,
-        historyGroupKey: null,
-        historyGroupAt: 0,
-        doc: withHistoryFlags(cloneDoc(next), nextPast.length > 0, remainingFuture.length > 0)
+        gridHistoryPast: nextPast,
+        gridHistoryFuture: remainingFuture,
+        gridHistoryGroupKey: null,
+        gridHistoryGroupAt: 0,
+        gridModeDocV2: nextWithFlags,
+        doc: nextCompatibilityDoc
       };
     });
   },

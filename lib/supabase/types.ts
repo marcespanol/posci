@@ -1,10 +1,10 @@
-import type { PosterDoc } from "@/lib/poster/types";
+import type { PosterDocAny } from "@/lib/poster/types";
 
 export interface PosterRow {
   id: string;
   user_id: string;
   title: string;
-  doc: PosterDoc;
+  doc: PosterDocAny;
   created_at: string;
   updated_at: string;
 }

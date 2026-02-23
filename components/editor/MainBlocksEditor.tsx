@@ -1,24 +1,27 @@
 "use client";
 
-import { Fragment, useEffect, useRef, useState } from "react";
-import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
+import { useEffect, useRef, useState } from "react";
 import { TransformComponent, TransformWrapper } from "react-zoom-pan-pinch";
 
 import FloatingParagraphLayer from "@/components/editor/FloatingParagraphLayer";
-import ContentControlsMenu from "@/components/editor/menus/ContentControlsMenu";
+import GridMainRenderer from "@/components/editor/GridMainRenderer";
+import GridLayoutControls from "@/components/editor/menus/GridLayoutControls";
 import styles from "@/components/editor/main-blocks-editor.module.css";
-import MainRichTextEditor from "@/components/editor/tiptap/MainRichTextEditor";
 import RichTextMarksEditor from "@/components/editor/tiptap/RichTextMarksEditor";
-import type { PosterFloatingParagraphBlock, TipTapJsonContent } from "@/lib/poster/types";
-import { uploadPosterAsset } from "@/lib/supabase/assets-client";
+import { usePosterGridFacade } from "@/components/editor/usePosterGridFacade";
+import { useGridLayoutControlActions } from "@/components/editor/useGridLayoutControlActions";
+import { usePosterImageInsertion } from "@/components/editor/usePosterImageInsertion";
+import { useGridPreviewRuntime } from "@/components/editor/useGridPreviewRuntime";
+import { useMainTextBlockTargetResolver } from "@/components/editor/useMainTextBlockTargetResolver";
+import {
+  selectPosterReadDoc
+} from "@/lib/store/poster-read-selectors";
+import type { PosterFloatingParagraphBlock } from "@/lib/poster/types";
 import { usePosterEditorStore } from "@/lib/store/poster-store";
 
 interface MainBlocksEditorProps {
   fullscreen?: boolean;
 }
-
-const MIN_COLUMN_SIZE_PERCENT = 12;
-const MIN_ROW_SIZE_PERCENT = 8;
 
 const isPanLockTarget = (target: EventTarget | null): boolean => {
   if (!(target instanceof HTMLElement)) {
@@ -30,26 +33,24 @@ const isPanLockTarget = (target: EventTarget | null): boolean => {
 
 export default function MainBlocksEditor({ fullscreen = false }: MainBlocksEditorProps) {
   const doc = usePosterEditorStore((state) => state.doc);
+  const readDoc = usePosterEditorStore(selectPosterReadDoc);
   const posterId = usePosterEditorStore((state) => state.posterId);
   const setBlockContent = usePosterEditorStore((state) => state.setBlockContent);
-  const addColumn = usePosterEditorStore((state) => state.addColumn);
-  const removeColumn = usePosterEditorStore((state) => state.removeColumn);
-  const ensureColumnHasTextBlock = usePosterEditorStore((state) => state.ensureColumnHasTextBlock);
   const setHeaderContent = usePosterEditorStore((state) => state.setHeaderContent);
   const setHeaderSubtitleContent = usePosterEditorStore((state) => state.setHeaderSubtitleContent);
   const setFooterContent = usePosterEditorStore((state) => state.setFooterContent);
-  const setColumnLayoutRatios = usePosterEditorStore((state) => state.setColumnLayoutRatios);
-  const setColumnSegmentLayoutRatios = usePosterEditorStore((state) => state.setColumnSegmentLayoutRatios);
-  const addSegment = usePosterEditorStore((state) => state.addSegment);
-  const removeSegment = usePosterEditorStore((state) => state.removeSegment);
   const addFloatingParagraph = usePosterEditorStore((state) => state.addFloatingParagraph);
+  const grid = usePosterGridFacade();
+  const initializeGridRegions = grid.initializeRegions;
+  const selectGridRegion = grid.selectRegion;
+  const gridModeDocV2 = usePosterEditorStore((state) => state.gridModeDocV2);
 
   const zoomViewportRef = useRef<HTMLDivElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const [panDisabled, setPanDisabled] = useState(false);
   const [spacePanMode, setSpacePanMode] = useState(false);
-  const [selectedColumnId, setSelectedColumnId] = useState<string | null>(null);
-  const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(null);
+  const [gridDrawMode, setGridDrawMode] = useState(false);
+  const [gridDrawStatusText, setGridDrawStatusText] = useState<string | null>(null);
 
   const syncPanWithActiveElement = () => {
     const active = document.activeElement;
@@ -66,18 +67,6 @@ export default function MainBlocksEditor({ fullscreen = false }: MainBlocksEdito
 
     setPanDisabled(isPanLockTarget(active));
   };
-
-  const columnIds = doc?.sections.main.columnIds;
-
-  useEffect(() => {
-    if (!columnIds) {
-      return;
-    }
-
-    columnIds.forEach((columnId) => {
-      ensureColumnHasTextBlock(columnId);
-    });
-  }, [columnIds, ensureColumnHasTextBlock]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -115,103 +104,71 @@ export default function MainBlocksEditor({ fullscreen = false }: MainBlocksEdito
     };
   }, []);
 
-  if (!doc) {
+  useEffect(() => {
+    if (!gridDrawStatusText) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      setGridDrawStatusText(null);
+    }, 1800);
+
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }, [gridDrawStatusText]);
+
+  const { v2PreviewDoc, isGridPreviewMode } = useGridPreviewRuntime({
+    doc,
+    gridModeDocV2,
+    initializeRegions: initializeGridRegions,
+    selectRegion: selectGridRegion
+  });
+
+  const gridDockActions = useGridLayoutControlActions({
+    selectedRegionId: grid.selectedRegionId,
+    moveRegionBy: grid.moveRegionBy,
+    splitHorizontal: grid.splitHorizontal,
+    splitVertical: grid.splitVertical,
+    mergeLeft: grid.mergeLeft,
+    mergeRight: grid.mergeRight,
+    deleteRegion: grid.deleteRegion,
+    onAddImage: () => {
+      imageInputRef.current?.click();
+    }
+  });
+
+  const getTargetTextBlockId = useMainTextBlockTargetResolver({
+    v2PreviewDoc,
+    gridSelectedRegionId: grid.selectedRegionId,
+    gridRegions: grid.regions,
+    getLegacyTargetTextBlockId: () => null
+  });
+
+  const onImageFilePicked = usePosterImageInsertion({
+    posterId,
+    blocks: readDoc?.blocks ?? {},
+    resolveTargetTextBlockId: getTargetTextBlockId,
+    setBlockContent
+  });
+
+  if (!doc || !readDoc) {
     return null;
   }
-
-  const columnCount = doc.sections.main.columnIds.length;
   const artboardSizeClass =
-    doc.meta.sizePreset === "A1"
-      ? doc.meta.orientation === "landscape"
+    readDoc.meta.sizePreset === "A1"
+      ? readDoc.meta.orientation === "landscape"
         ? styles.artboardA1Landscape
         : styles.artboardA1Portrait
-      : doc.meta.orientation === "landscape"
+      : readDoc.meta.orientation === "landscape"
         ? styles.artboardScreenLandscape
         : styles.artboardScreenPortrait;
-  const artboardColorClass = doc.meta.colorTheme === "GREEN" ? styles.themeGreen : styles.themeBlue;
+  const artboardColorClass = readDoc.meta.colorTheme === "GREEN" ? styles.themeGreen : styles.themeBlue;
   const artboardTypeClass =
-    doc.meta.typographyTheme === "SANS_HEADERS_MONO_BODY" ? styles.typeSansMono : styles.typeSerifSans;
-  const floatingBlocks = Object.values(doc.blocks).filter(
+    readDoc.meta.typographyTheme === "SANS_HEADERS_MONO_BODY" ? styles.typeSansMono : styles.typeSerifSans;
+  const floatingBlocks = Object.values(readDoc.blocks).filter(
     (block): block is PosterFloatingParagraphBlock => block.type === "floatingParagraph"
   );
-  const activeColumnId = selectedColumnId ?? doc.sections.main.columnIds[0] ?? null;
-  const activeColumn = activeColumnId ? doc.sections.main.columns[activeColumnId] : null;
-  const activeRowCount = activeColumn?.segments.length ?? 0;
-
-  const getSegmentTextBlockId = (blockIds: string[]): string | null => {
-    for (const blockId of blockIds) {
-      const block = doc.blocks[blockId];
-      if (block?.type === "text") {
-        return blockId;
-      }
-    }
-
-    return null;
-  };
-
-  const appendImageToDoc = (content: TipTapJsonContent, src: string, alt: string): TipTapJsonContent => {
-    const currentBlocks = Array.isArray(content.content) ? [...content.content] : [];
-    currentBlocks.push({
-      type: "image",
-      attrs: {
-        src,
-        alt,
-        width: 520
-      }
-    });
-
-    return {
-      ...content,
-      type: "doc",
-      content: currentBlocks
-    };
-  };
-
-  const getTargetTextBlockId = (): string | null => {
-    const targetColumnId = activeColumnId ?? doc.sections.main.columnIds[0] ?? null;
-    if (!targetColumnId) {
-      return null;
-    }
-
-    const column = doc.sections.main.columns[targetColumnId];
-    if (!column) {
-      return null;
-    }
-
-    const segment =
-      (selectedSegmentId ? column.segments.find((item) => item.id === selectedSegmentId) : null) ?? column.segments[0];
-    if (!segment) {
-      return null;
-    }
-
-    return getSegmentTextBlockId(segment.blockIds);
-  };
-
-  const onImageFilePicked = (file: File) => {
-    if (!posterId) {
-      return;
-    }
-
-    const targetTextBlockId = getTargetTextBlockId();
-    if (!targetTextBlockId) {
-      return;
-    }
-
-    const targetBlock = doc.blocks[targetTextBlockId];
-    if (!targetBlock || targetBlock.type !== "text") {
-      return;
-    }
-
-    void (async () => {
-      try {
-        const uploaded = await uploadPosterAsset(posterId, file);
-        const nextContent = appendImageToDoc(targetBlock.content, uploaded.signedUrl, file.name || "Uploaded image");
-        setBlockContent(targetTextBlockId, nextContent);
-      } catch (error) {
-        console.error("Add image failed", error);
-      }
-    })();
-  };
 
   return (
     <section className={`${styles.container} ${fullscreen ? styles.containerFullscreen : ""}`}>
@@ -219,13 +176,10 @@ export default function MainBlocksEditor({ fullscreen = false }: MainBlocksEdito
       {!fullscreen ? <p className={styles.helper}>Supports heading, paragraph, image block, and inline images.</p> : null}
       {!fullscreen ? (
         <div className={styles.controls}>
-          <button type="button" className={styles.controlButton} onClick={addColumn} disabled={columnCount >= 5}>
-            Add column
-          </button>
           <button type="button" className={styles.controlButton} onClick={addFloatingParagraph}>
             Add floating paragraph
           </button>
-          <p className={styles.counter}>Columns: {columnCount} / 5</p>
+          <p className={styles.counter}>Regions: {grid.regions.length}</p>
         </div>
       ) : null}
 
@@ -288,13 +242,13 @@ export default function MainBlocksEditor({ fullscreen = false }: MainBlocksEdito
                       className={`${styles.artboardHeader} ${styles.richText}`}
                     >
                       <RichTextMarksEditor
-                        content={doc.sections.header.content}
+                        content={readDoc.sections.header.content}
                         onChange={setHeaderContent}
                         variant="artboardHeader"
                       />
-                      {(doc.meta.headerSubtitleVisible ?? true) && doc.sections.headerSubtitle ? (
+                      {(readDoc.meta.headerSubtitleVisible ?? true) && readDoc.sections.headerSubtitle ? (
                         <RichTextMarksEditor
-                          content={doc.sections.headerSubtitle.content}
+                          content={readDoc.sections.headerSubtitle.content}
                           onChange={setHeaderSubtitleContent}
                           singleLine
                           variant="artboardFooter"
@@ -303,96 +257,40 @@ export default function MainBlocksEditor({ fullscreen = false }: MainBlocksEdito
                     </header>
 
                     <section className={styles.artboardMain}>
-                      <PanelGroup
-                        direction="horizontal"
-                        className={styles.columnsPanelGroup}
-                        onLayout={(sizes) => {
-                          setColumnLayoutRatios(doc.sections.main.columnIds, sizes);
-                        }}
-                      >
-                        {doc.sections.main.columnIds.map((columnId, columnIndex) => {
-                          const column = doc.sections.main.columns[columnId];
-                          if (!column) {
-                            return null;
-                          }
+                      {v2PreviewDoc ? (
+                        <GridMainRenderer
+                          v2Doc={v2PreviewDoc}
+                          regions={grid.regions}
+                          selectedRegionId={grid.selectedRegionId}
+                          drawMode={gridDrawMode}
+                          onSelectRegion={grid.selectRegion}
+                          onActivateGridRegion={(regionId) => {
+                            grid.selectRegion(regionId);
+                          }}
+                          onUpdateRegionRect={grid.updateRegionRect}
+                          onCreateRegion={grid.createRegion}
+                          onCreateRegionResult={(result) => {
+                            if (result === "created") {
+                              setGridDrawStatusText("Region created");
+                              setGridDrawMode(false);
+                              return;
+                            }
 
-                          const segmentCount = column.segments.length;
-                          const segmentIds = column.segments.map((segment) => segment.id);
-
-                          return (
-                            <Fragment key={column.id}>
-                              <Panel
-                                defaultSize={Math.max(1, column.widthRatio * 100)}
-                                minSize={MIN_COLUMN_SIZE_PERCENT}
-                                className={styles.columnPanel}
-                              >
-                                <article
-                                  className={`${styles.column} ${selectedColumnId === column.id ? styles.columnActive : ""}`}
-                                  onPointerDown={() => {
-                                    setSelectedColumnId(column.id);
-                                  }}
-                                >
-                                  <PanelGroup
-                                    direction="vertical"
-                                    className={styles.columnRows}
-                                    onLayout={(sizes) => {
-                                      setColumnSegmentLayoutRatios(column.id, segmentIds, sizes);
-                                    }}
-                                  >
-                                    {column.segments.map((segment, segmentIndex) => {
-                                      const textBlockId = getSegmentTextBlockId(segment.blockIds);
-                                      const textBlock = textBlockId ? doc.blocks[textBlockId] : null;
-                                      const defaultSize = (segment.heightRatio ?? 1 / Math.max(segmentCount, 1)) * 100;
-
-                                      return (
-                                        <Fragment key={segment.id}>
-                                          <Panel defaultSize={Math.max(1, defaultSize)} minSize={MIN_ROW_SIZE_PERCENT}>
-                                            <section
-                                              className={styles.rowSegment}
-                                              onPointerDown={() => {
-                                                setSelectedColumnId(column.id);
-                                                setSelectedSegmentId(segment.id);
-                                              }}
-                                            >
-                                              <div className={styles.columnEditorHost}>
-                                                {!textBlockId || !textBlock || textBlock.type !== "text" ? (
-                                                  <div className={styles.emptyState}>No text block in this row.</div>
-                                                ) : (
-                                                  <MainRichTextEditor
-                                                    key={textBlock.id}
-                                                    content={textBlock.content}
-                                                    onChange={(content) => setBlockContent(textBlock.id, content)}
-                                                  />
-                                                )}
-                                              </div>
-                                            </section>
-                                          </Panel>
-                                          {segmentIndex < segmentCount - 1 ? (
-                                            <PanelResizeHandle className={`${styles.rowResizeHandle} ${styles.noPan}`} />
-                                          ) : null}
-                                        </Fragment>
-                                      );
-                                    })}
-                                  </PanelGroup>
-                                </article>
-                              </Panel>
-                              {columnIndex < doc.sections.main.columnIds.length - 1 ? (
-                                <PanelResizeHandle className={`${styles.resizeHandle} ${styles.noPan}`} />
-                              ) : null}
-                            </Fragment>
-                          );
-                        })}
-                      </PanelGroup>
+                            setGridDrawStatusText("Blocked: overlaps an existing region");
+                          }}
+                          onSetBlockContent={setBlockContent}
+                        />
+                      ) : null}
 
                       <FloatingParagraphLayer blocks={floatingBlocks} />
                     </section>
 
-                    {doc.meta.footerVisible ? (
+                    {readDoc.meta.footerVisible ? (
                       <footer
                         className={`${styles.artboardFooter} ${styles.richText}`}
                       >
                         <RichTextMarksEditor
-                          content={doc.sections.footer.content}
+                          content={readDoc.sections.footer.content}
                           onChange={setFooterContent}
                           singleLine
                           variant="artboardFooter"
@@ -404,50 +302,32 @@ export default function MainBlocksEditor({ fullscreen = false }: MainBlocksEdito
               </TransformComponent>
             </div>
             <div className={styles.bottomCenterDock}>
-              <ContentControlsMenu
-                columnCount={columnCount}
-                canRemoveColumn={Boolean(activeColumnId) && columnCount > 1}
-                rowCount={activeRowCount}
-                canAddRow={Boolean(activeColumnId) && activeRowCount < 5}
-                canRemoveRow={Boolean(activeColumnId) && activeRowCount > 1}
-                onAddColumn={addColumn}
-                onRemoveSelectedColumn={() => {
-                  if (!activeColumnId) {
-                    return;
-                  }
-
-                  removeColumn(activeColumnId);
-                  setSelectedColumnId(null);
-                }}
-                onAddRow={() => {
-                  if (!activeColumnId) {
-                    return;
-                  }
-
-                  addSegment(activeColumnId);
-                }}
-                onRemoveRow={() => {
-                  if (!activeColumnId) {
-                    return;
-                  }
-
-                  const column = doc.sections.main.columns[activeColumnId];
-                  if (!column) {
-                    return;
-                  }
-
-                  const lastSegment = column.segments[column.segments.length - 1];
-                  if (!lastSegment) {
-                    return;
-                  }
-
-                  removeSegment(activeColumnId, lastSegment.id);
-                }}
-                onAddImage={() => {
-                  imageInputRef.current?.click();
-                }}
-                onAddFloatingParagraph={addFloatingParagraph}
-              />
+              {isGridPreviewMode ? (
+                <GridLayoutControls
+                  regionCount={grid.regions.length}
+                  selectedRegionId={grid.selectedRegionId}
+                  drawMode={gridDrawMode}
+                  drawStatusText={gridDrawStatusText}
+                  canSplitHorizontally={grid.canSplitHorizontally}
+                  canSplitVertically={grid.canSplitVertically}
+                  canMergeLeft={grid.canMergeLeft}
+                  canMergeRight={grid.canMergeRight}
+                  onMoveUp={gridDockActions.onMoveUp}
+                  onMoveLeft={gridDockActions.onMoveLeft}
+                  onMoveRight={gridDockActions.onMoveRight}
+                  onMoveDown={gridDockActions.onMoveDown}
+                  onSplitHorizontal={gridDockActions.onSplitHorizontal}
+                  onSplitVertical={gridDockActions.onSplitVertical}
+                  onMergeLeft={gridDockActions.onMergeLeft}
+                  onMergeRight={gridDockActions.onMergeRight}
+                  onDelete={gridDockActions.onDelete}
+                  onAddImage={gridDockActions.onAddImage}
+                  onToggleDrawMode={() => {
+                    setGridDrawStatusText(null);
+                    setGridDrawMode((current) => !current);
+                  }}
+                />
+              ) : null}
             </div>
           </div>
         )}

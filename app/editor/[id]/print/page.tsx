@@ -3,8 +3,9 @@ import { notFound, redirect } from "next/navigation";
 
 import PrintActions from "@/app/editor/[id]/print/print-actions";
 import styles from "@/app/editor/[id]/print/print.module.css";
+import { migratePosterDocToLatest } from "@/lib/poster/migrations";
 import { renderPosterBlockToHtml, renderTipTapDocToHtml } from "@/lib/poster/render-html";
-import type { PosterDoc, PosterFloatingParagraphBlock } from "@/lib/poster/types";
+import type { PosterDocAny, PosterFloatingParagraphBlock } from "@/lib/poster/types";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type { PosterRow } from "@/lib/supabase/types";
 
@@ -17,7 +18,7 @@ interface PrintPageProps {
   }>;
 }
 
-const posterClassName = (doc: PosterDoc): string => {
+const posterClassName = (doc: PosterDocAny): string => {
   if (doc.meta.sizePreset === "A1") {
     return doc.meta.orientation === "landscape" ? styles.a1Landscape : styles.a1Portrait;
   }
@@ -56,7 +57,8 @@ export default async function PrintPage({ params, searchParams }: PrintPageProps
 
   const poster = data as PosterRow;
   const doc = poster.doc;
-  const floatingBlocks = Object.values(doc.blocks).filter(
+  const gridDoc = migratePosterDocToLatest(doc);
+  const floatingBlocks = Object.values(gridDoc.blocks).filter(
     (block): block is PosterFloatingParagraphBlock => block.type === "floatingParagraph"
   );
 
@@ -79,40 +81,35 @@ export default async function PrintPage({ params, searchParams }: PrintPageProps
       </header>
 
       <section className={styles.canvasWrap}>
-        <article className={`${styles.poster} ${posterClassName(doc)}`}>
-          <header className={`${styles.header} ${styles.rich}`} dangerouslySetInnerHTML={{ __html: renderTipTapDocToHtml(doc.sections.header.content) }} />
+        <article className={`${styles.poster} ${posterClassName(gridDoc)}`}>
+          <header
+            className={`${styles.header} ${styles.rich}`}
+            dangerouslySetInnerHTML={{ __html: renderTipTapDocToHtml(gridDoc.sections.header.content) }}
+          />
 
           <section className={styles.main}>
-            <div className={styles.columns}>
-              {doc.sections.main.columnIds.map((columnId) => {
-                const column = doc.sections.main.columns[columnId];
-                if (!column) {
-                  return null;
-                }
+            <div className={styles.gridMain}>
+              <div className={styles.gridStage}>
+                {gridDoc.sections.main.regions.map((region) => {
+                  const block = gridDoc.blocks[region.blockId];
+                  if (!block || block.type === "floatingParagraph") {
+                    return null;
+                  }
 
-                return (
-                  <div key={column.id} className={styles.column} style={{ flexGrow: column.widthRatio }}>
-                    {column.segments.map((segment) => (
-                      <section key={segment.id} className={styles.segment}>
-                        {segment.blockIds.map((blockId) => {
-                          const block = doc.blocks[blockId];
-                          if (!block || block.type === "floatingParagraph") {
-                            return null;
-                          }
-
-                          return (
-                            <div
-                              key={block.id}
-                              className={styles.rich}
-                              dangerouslySetInnerHTML={{ __html: renderPosterBlockToHtml(block) }}
-                            />
-                          );
-                        })}
-                      </section>
-                    ))}
-                  </div>
-                );
-              })}
+                  return (
+                    <section
+                      key={region.id}
+                      className={styles.gridRegion}
+                      style={{
+                        gridColumn: `${region.x + 1} / span ${region.w}`,
+                        gridRow: `${region.y + 1} / span ${region.h}`
+                      }}
+                    >
+                      <div className={styles.rich} dangerouslySetInnerHTML={{ __html: renderPosterBlockToHtml(block) }} />
+                    </section>
+                  );
+                })}
+              </div>
             </div>
 
             <div className={styles.floatingLayer}>
@@ -127,10 +124,10 @@ export default async function PrintPage({ params, searchParams }: PrintPageProps
             </div>
           </section>
 
-          {doc.meta.footerVisible ? (
+          {gridDoc.meta.footerVisible ? (
             <footer
               className={`${styles.footer} ${styles.rich}`}
-              dangerouslySetInnerHTML={{ __html: renderTipTapDocToHtml(doc.sections.footer.content) }}
+              dangerouslySetInnerHTML={{ __html: renderTipTapDocToHtml(gridDoc.sections.footer.content) }}
             />
           ) : null}
         </article>

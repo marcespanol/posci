@@ -4,12 +4,12 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import type { PosterDoc } from "@/lib/poster/types";
+import type { PosterDocAny } from "@/lib/poster/types";
 
 interface SavePosterPayload {
   posterId: string;
   title: string;
-  doc: PosterDoc;
+  doc: PosterDocAny;
 }
 
 export const savePosterAction = async (payload: SavePosterPayload) => {

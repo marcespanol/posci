@@ -1,10 +1,23 @@
 "use client";
 
 import styles from "@/components/editor/menus/general-options-menu.module.css";
+import {
+  selectPosterReadColorTheme,
+  selectPosterReadFooterVisible,
+  selectPosterReadHeaderSubtitleVisible,
+  selectPosterReadOrientation,
+  selectPosterReadSizePreset,
+  selectPosterReadTypographyTheme
+} from "@/lib/store/poster-read-selectors";
 import { usePosterEditorStore } from "@/lib/store/poster-store";
 
 export default function GeneralOptionsMenu() {
-  const doc = usePosterEditorStore((state) => state.doc);
+  const typographyTheme = usePosterEditorStore(selectPosterReadTypographyTheme);
+  const colorTheme = usePosterEditorStore(selectPosterReadColorTheme);
+  const orientation = usePosterEditorStore(selectPosterReadOrientation);
+  const sizePreset = usePosterEditorStore(selectPosterReadSizePreset);
+  const headerSubtitleVisible = usePosterEditorStore(selectPosterReadHeaderSubtitleVisible);
+  const footerVisible = usePosterEditorStore(selectPosterReadFooterVisible);
   const canUndo = usePosterEditorStore((state) => state.canUndo);
   const canRedo = usePosterEditorStore((state) => state.canRedo);
   const undo = usePosterEditorStore((state) => state.undo);
@@ -16,7 +29,7 @@ export default function GeneralOptionsMenu() {
   const toggleHeaderSubtitleVisible = usePosterEditorStore((state) => state.toggleHeaderSubtitleVisible);
   const toggleFooterVisible = usePosterEditorStore((state) => state.toggleFooterVisible);
 
-  if (!doc) {
+  if (!typographyTheme || !colorTheme || !orientation || !sizePreset) {
     return null;
   }
 
@@ -36,14 +49,14 @@ export default function GeneralOptionsMenu() {
         <span className={styles.label}>Type</span>
         <button
           type="button"
-          className={`${styles.button} ${doc.meta.typographyTheme === "SERIF_HEADERS_SANS_BODY" ? styles.buttonActive : ""}`}
+          className={`${styles.button} ${typographyTheme === "SERIF_HEADERS_SANS_BODY" ? styles.buttonActive : ""}`}
           onClick={() => setTypographyTheme("SERIF_HEADERS_SANS_BODY")}
         >
           Serif/Sans
         </button>
         <button
           type="button"
-          className={`${styles.button} ${doc.meta.typographyTheme === "SANS_HEADERS_MONO_BODY" ? styles.buttonActive : ""}`}
+          className={`${styles.button} ${typographyTheme === "SANS_HEADERS_MONO_BODY" ? styles.buttonActive : ""}`}
           onClick={() => setTypographyTheme("SANS_HEADERS_MONO_BODY")}
         >
           Sans/Mono
@@ -54,14 +67,14 @@ export default function GeneralOptionsMenu() {
         <span className={styles.label}>Color</span>
         <button
           type="button"
-          className={`${styles.button} ${doc.meta.colorTheme === "BLUE" ? styles.buttonActive : ""}`}
+          className={`${styles.button} ${colorTheme === "BLUE" ? styles.buttonActive : ""}`}
           onClick={() => setColorTheme("BLUE")}
         >
           Blue
         </button>
         <button
           type="button"
-          className={`${styles.button} ${doc.meta.colorTheme === "GREEN" ? styles.buttonActive : ""}`}
+          className={`${styles.button} ${colorTheme === "GREEN" ? styles.buttonActive : ""}`}
           onClick={() => setColorTheme("GREEN")}
         >
           Green
@@ -72,28 +85,28 @@ export default function GeneralOptionsMenu() {
         <span className={styles.label}>Layout</span>
         <button
           type="button"
-          className={`${styles.button} ${doc.meta.orientation === "portrait" ? styles.buttonActive : ""}`}
+          className={`${styles.button} ${orientation === "portrait" ? styles.buttonActive : ""}`}
           onClick={() => setOrientation("portrait")}
         >
           Portrait
         </button>
         <button
           type="button"
-          className={`${styles.button} ${doc.meta.orientation === "landscape" ? styles.buttonActive : ""}`}
+          className={`${styles.button} ${orientation === "landscape" ? styles.buttonActive : ""}`}
           onClick={() => setOrientation("landscape")}
         >
           Landscape
         </button>
         <button
           type="button"
-          className={`${styles.button} ${doc.meta.sizePreset === "A1" ? styles.buttonActive : ""}`}
+          className={`${styles.button} ${sizePreset === "A1" ? styles.buttonActive : ""}`}
           onClick={() => setSizePreset("A1")}
         >
           A1
         </button>
         <button
           type="button"
-          className={`${styles.button} ${doc.meta.sizePreset === "SCREEN_X2" ? styles.buttonActive : ""}`}
+          className={`${styles.button} ${sizePreset === "SCREEN_X2" ? styles.buttonActive : ""}`}
           onClick={() => setSizePreset("SCREEN_X2")}
         >
           Screen x2
@@ -103,14 +116,14 @@ export default function GeneralOptionsMenu() {
       <div className={styles.row}>
         <span className={styles.label}>Subtitle</span>
         <button type="button" className={styles.button} onClick={toggleHeaderSubtitleVisible}>
-          {(doc.meta.headerSubtitleVisible ?? true) ? "Hide" : "Show"}
+          {headerSubtitleVisible ? "Hide" : "Show"}
         </button>
       </div>
 
       <div className={styles.row}>
         <span className={styles.label}>Footer</span>
         <button type="button" className={styles.button} onClick={toggleFooterVisible}>
-          {doc.meta.footerVisible ? "Hide" : "Show"}
+          {footerVisible ? "Hide" : "Show"}
         </button>
       </div>
     </div>

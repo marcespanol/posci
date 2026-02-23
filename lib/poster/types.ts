@@ -1,4 +1,5 @@
 export type PosterDocVersion = 1;
+export type PosterDocV2Version = 2;
 
 export type PosterOrientation = "portrait" | "landscape";
 export type PosterSizePreset = "A1" | "SCREEN_X2";
@@ -86,8 +87,63 @@ export interface PosterDoc {
     main: PosterMainLayout;
   };
   blocks: Record<string, PosterBlock>;
+  experimental?: {
+    mainEditorMode?: "legacy" | "grid-v2";
+    mainGridV2?: PosterMainGridLayout;
+  };
   history: {
     canUndo: boolean;
     canRedo: boolean;
   };
 }
+
+export interface PosterGridSpec {
+  cols: 24;
+  rows: 12;
+  gapPx: number;
+}
+
+export interface PosterMainRegion {
+  id: string;
+  kind: "content";
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  blockId: string;
+  zIndex?: number;
+  locked?: boolean;
+}
+
+export interface PosterMainGridLayout {
+  grid: PosterGridSpec;
+  regions: PosterMainRegion[];
+}
+
+export interface PosterDocV2 {
+  version: PosterDocV2Version;
+  meta: {
+    title: string;
+    orientation: PosterOrientation;
+    sizePreset: PosterSizePreset;
+    typographyTheme: TypographyTheme;
+    colorTheme: ColorTheme;
+    headerSubtitleVisible?: boolean;
+    footerVisible: boolean;
+  };
+  sections: {
+    header: PosterHeaderFooter;
+    headerSubtitle?: PosterHeaderFooter;
+    footer: PosterHeaderFooter;
+    main: PosterMainGridLayout;
+  };
+  blocks: Record<string, PosterBlock>;
+  history: {
+    canUndo: boolean;
+    canRedo: boolean;
+  };
+}
+
+export type PosterDocV1 = PosterDoc;
+export type PosterDocAny = PosterDocV1 | PosterDocV2;
+export type PosterDocLatest = PosterDocV1;

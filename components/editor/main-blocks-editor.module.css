@@ -33,6 +33,12 @@
   opacity: 0.55;
 }
 
+.controlButtonActive {
+  border-color: #8fb6e3;
+  background: #eaf3ff;
+  color: #174a86;
+}
+
 .counter {
   margin: 0;
   color: var(--muted);
@@ -169,6 +175,156 @@
   overflow: hidden;
 }
 
+.gridMainShell {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.gridOverlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.2;
+  background-image:
+    linear-gradient(to right, rgba(61, 89, 121, 0.35) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(61, 89, 121, 0.35) 1px, transparent 1px);
+  background-size:
+    calc(100% / 24) 100%,
+    100% calc(100% / 12);
+}
+
+.gridStage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: grid;
+  grid-template-columns: repeat(24, minmax(0, 1fr));
+  grid-template-rows: repeat(12, minmax(0, 1fr));
+  gap: 0.55rem;
+  min-height: 0;
+  min-width: 0;
+}
+
+.gridStageDrawMode {
+  cursor: crosshair;
+}
+
+.gridCreatePreview {
+  border: 1px dashed #2e7ad3;
+  background: rgba(93, 163, 255, 0.14);
+  border-radius: 4px;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.gridCreatePreviewBlocked {
+  border-color: #d64545;
+  background: rgba(214, 69, 69, 0.12);
+}
+
+.gridDrawStatus {
+  margin: 0;
+  font-size: 0.78rem;
+  color: #5f6f83;
+  white-space: nowrap;
+}
+
+.gridRegion {
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid #dce4ee;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.72);
+  padding: 0.16rem;
+  display: flex;
+  overflow: hidden;
+  position: relative;
+}
+
+.gridRegionActive {
+  border-color: #8fb6e3;
+  box-shadow: inset 0 0 0 1px #c6daf2;
+  cursor: move;
+}
+
+.gridResizeKnob {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border: 1px solid #3978c8;
+  background: #fff;
+  border-radius: 2px;
+  padding: 0;
+  z-index: 3;
+}
+
+.gridResizeEdge {
+  position: absolute;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  z-index: 2;
+}
+
+.gridResizeNw {
+  left: -5px;
+  top: -5px;
+  cursor: nwse-resize;
+}
+
+.gridResizeNe {
+  right: -5px;
+  top: -5px;
+  cursor: nesw-resize;
+}
+
+.gridResizeSw {
+  left: -5px;
+  bottom: -5px;
+  cursor: nesw-resize;
+}
+
+.gridResizeSe {
+  right: -5px;
+  bottom: -5px;
+  cursor: nwse-resize;
+}
+
+.gridResizeN {
+  left: 12px;
+  right: 12px;
+  top: -4px;
+  height: 8px;
+  cursor: ns-resize;
+}
+
+.gridResizeS {
+  left: 12px;
+  right: 12px;
+  bottom: -4px;
+  height: 8px;
+  cursor: ns-resize;
+}
+
+.gridResizeE {
+  top: 12px;
+  bottom: 12px;
+  right: -4px;
+  width: 8px;
+  cursor: ew-resize;
+}
+
+.gridResizeW {
+  top: 12px;
+  bottom: 12px;
+  left: -4px;
+  width: 8px;
+  cursor: ew-resize;
+}
+
 .columnsPanelGroup {
   width: 100%;
   height: 100%;
@@ -225,6 +381,14 @@
   bottom: 0.8rem;
   transform: translateX(-50%);
   z-index: 45;
+}
+
+.gridPreviewDock {
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.35rem;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.08);
 }
 
 .zoomViewport {

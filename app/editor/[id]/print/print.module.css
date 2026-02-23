@@ -92,6 +92,28 @@
   overflow: hidden;
 }
 
+.gridMain {
+  height: 100%;
+}
+
+.gridStage {
+  display: grid;
+  grid-template-columns: repeat(24, minmax(0, 1fr));
+  grid-template-rows: repeat(12, minmax(0, 1fr));
+  gap: 7mm;
+  height: 100%;
+}
+
+.gridRegion {
+  border: 1px solid #d9e2ed;
+  border-radius: 6px;
+  padding: 4mm;
+  min-width: 0;
+  min-height: 0;
+  background: #fff;
+  overflow: hidden;
+}
+
 .columns {
   display: flex;
   gap: 7mm;
