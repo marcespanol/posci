@@ -4,24 +4,34 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { savePosterAction } from "@/app/editor/[id]/actions";
+import { listPosterCommentsAction } from "@/app/editor/[id]/comment-actions";
 import styles from "@/app/editor/[id]/editor.module.css";
+import EditorLockBanner from "@/components/editor/EditorLockBanner";
 import HeaderFooterEditors from "@/components/editor/HeaderFooterEditors";
 import MainBlocksEditor from "@/components/editor/MainBlocksEditor";
+import CommentsPanel from "@/components/editor/CommentsPanel";
 import DownloadMenu from "@/components/editor/menus/DownloadMenu";
 import GeneralOptionsMenu from "@/components/editor/menus/GeneralOptionsMenu";
+import ShareMembersPanel from "@/components/editor/ShareMembersPanel";
+import { usePosterEditLock } from "@/components/editor/usePosterEditLock";
 import { usePosterEditorDocumentFacade } from "@/components/editor/usePosterEditorDocumentFacade";
+import { getPosterCapabilities } from "@/lib/poster/capabilities";
+import type { PosterCommentAnchorTarget } from "@/lib/poster/comments";
+import { commentAnchorKey, type PosterCommentRecord } from "@/lib/poster/comments";
 import { downloadPdfFromPngDataUrl } from "@/lib/poster/export-pdf";
 import { downloadPosterElementAsPng, renderPosterElementToPngDataUrl } from "@/lib/poster/export-png";
+import type { PosterCollabAccess } from "@/lib/poster/locking-types";
 import { toPersistablePosterSavePayload } from "@/lib/poster/persistence-adapter";
 import type { PosterDocAny, PosterDocV2 } from "@/lib/poster/types";
 import { usePosterEditorStore } from "@/lib/store/poster-store";
 
-type LeftPanelMode = "text" | "theme" | "layout" | null;
+type LeftPanelMode = "text" | "theme" | "layout" | "share" | "comments" | null;
 
 interface EditorClientProps {
   posterId: string;
   updatedAt: string;
   initialDoc: PosterDocAny;
+  access: PosterCollabAccess;
 }
 
 const AUTOSAVE_IDLE_MS = 3000;
@@ -34,9 +44,10 @@ const formatDate = (value: string): string => {
   }).format(new Date(value));
 };
 
-export default function EditorClient({ posterId, updatedAt, initialDoc }: EditorClientProps) {
+export default function EditorClient({ posterId, updatedAt, initialDoc, access }: EditorClientProps) {
   const documentFacade = usePosterEditorDocumentFacade();
   const { readDoc, gridModeDocV2, readTitle, persistableHash } = documentFacade;
+  const capabilities = useMemo(() => getPosterCapabilities(access.role), [access.role]);
   const isDirty = usePosterEditorStore((state) => state.isDirty);
   const initializePoster = usePosterEditorStore((state) => state.initializePoster);
   const resetPoster = usePosterEditorStore((state) => state.resetPoster);
@@ -48,6 +59,9 @@ export default function EditorClient({ posterId, updatedAt, initialDoc }: Editor
   const canRedo = usePosterEditorStore((state) => state.canRedo);
 
   const [leftPanelMode, setLeftPanelMode] = useState<LeftPanelMode>(null);
+  const [commentMode, setCommentMode] = useState(false);
+  const [selectedCommentAnchor, setSelectedCommentAnchor] = useState<PosterCommentAnchorTarget | null>(null);
+  const [comments, setComments] = useState<PosterCommentRecord[]>([]);
 
   const toggleLeftPanelMode = (mode: Exclude<LeftPanelMode, null>) => {
     setLeftPanelMode((current) => (current === mode ? null : mode));
@@ -58,12 +72,72 @@ export default function EditorClient({ posterId, updatedAt, initialDoc }: Editor
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latestGridModeDocV2Ref = useRef<PosterDocV2 | null>(null);
+  const canEditNowRef = useRef(false);
   const latestHashRef = useRef<string>("");
   const lastSavedHashRef = useRef<string>("");
   const lastSaveStartedAtRef = useRef<number>(0);
   const inFlightSaveRef = useRef(false);
   const queuedSaveRef = useRef(false);
   const initializedPosterIdRef = useRef<string | null>(null);
+  const lock = usePosterEditLock({
+    posterId,
+    userId: access.userId,
+    canEditRole: capabilities.canEdit,
+    canTakeOverLock: capabilities.canTakeOverLock
+  });
+  const canEditNow = capabilities.canEdit && lock.mode === "editable";
+
+  useEffect(() => {
+    canEditNowRef.current = canEditNow;
+  }, [canEditNow]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const rows = await listPosterCommentsAction(posterId);
+        if (!cancelled) {
+          setComments(rows);
+        }
+      } catch {
+        // Comments panel surfaces errors when opened; markers can fail silently.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [posterId]);
+
+  const commentCounts = useMemo(() => {
+    const countsByAnchorKey: Record<string, number> = {};
+    const byRegionId: Record<string, number> = {};
+    const byFloatingId: Record<string, number> = {};
+
+    for (const comment of comments) {
+      if (comment.status === "resolved") {
+        continue;
+      }
+
+      const key = commentAnchorKey(comment.anchor);
+      countsByAnchorKey[key] = (countsByAnchorKey[key] ?? 0) + 1;
+
+      if (comment.anchor.type === "region" && comment.anchor.id) {
+        byRegionId[comment.anchor.id] = (byRegionId[comment.anchor.id] ?? 0) + 1;
+      }
+      if (comment.anchor.type === "floating" && comment.anchor.id) {
+        byFloatingId[comment.anchor.id] = (byFloatingId[comment.anchor.id] ?? 0) + 1;
+      }
+    }
+
+    return {
+      byRegionId,
+      byFloatingId,
+      header: countsByAnchorKey["header:"] ?? 0,
+      headerSubtitle: countsByAnchorKey["headerSubtitle:"] ?? 0,
+      footer: countsByAnchorKey["footer:"] ?? 0
+    };
+  }, [comments]);
 
   useEffect(() => {
     initializePoster({ posterId, doc: initialDoc });
@@ -98,7 +172,7 @@ export default function EditorClient({ posterId, updatedAt, initialDoc }: Editor
   }, [gridModeDocV2, persistableHash]);
 
   useEffect(() => {
-    if (!isDirty) {
+    if (!isDirty || !canEditNow) {
       return;
     }
 
@@ -111,7 +185,7 @@ export default function EditorClient({ posterId, updatedAt, initialDoc }: Editor
     return () => {
       window.removeEventListener("beforeunload", onBeforeUnload);
     };
-  }, [isDirty]);
+  }, [canEditNow, isDirty]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -153,6 +227,9 @@ export default function EditorClient({ posterId, updatedAt, initialDoc }: Editor
   const persistLatest = useCallback(async () => {
     const activeGridModeDocV2 = latestGridModeDocV2Ref.current;
     if (!activeGridModeDocV2) {
+      return;
+    }
+    if (!canEditNowRef.current) {
       return;
     }
 
@@ -208,6 +285,10 @@ export default function EditorClient({ posterId, updatedAt, initialDoc }: Editor
       clearTimeout(saveTimerRef.current);
     }
 
+    if (!canEditNow) {
+      return;
+    }
+
     if (latestHashRef.current === lastSavedHashRef.current) {
       return;
     }
@@ -225,7 +306,7 @@ export default function EditorClient({ posterId, updatedAt, initialDoc }: Editor
         clearTimeout(saveTimerRef.current);
       }
     };
-  }, [persistLatest, readDoc]);
+  }, [canEditNow, persistLatest, readDoc]);
 
   const statusLabel = useMemo(() => {
     if (saveError) {
@@ -259,6 +340,23 @@ export default function EditorClient({ posterId, updatedAt, initialDoc }: Editor
           value={readTitle}
           onChange={(event) => setMetaTitle(event.target.value)}
           aria-label="Poster title"
+          disabled={!canEditNow}
+        />
+      </div>
+      <div className={styles.lockBannerDock}>
+        <EditorLockBanner
+          mode={lock.mode}
+          role={access.role}
+          lockOwnerUserId={lock.lockOwnerUserId}
+          lockReason={lock.lockReason}
+          canTakeOver={capabilities.canTakeOverLock}
+          isBusy={lock.isLockBusy}
+          onTakeOver={() => {
+            void lock.takeOver();
+          }}
+          onRetryAcquire={() => {
+            void lock.acquire();
+          }}
         />
       </div>
       <div className={styles.generalMenuDock}>
@@ -269,6 +367,9 @@ export default function EditorClient({ posterId, updatedAt, initialDoc }: Editor
         <DownloadMenu
           status={statusLabel}
           onSave={() => {
+            if (!canEditNow) {
+              return;
+            }
             if (saveTimerRef.current) {
               clearTimeout(saveTimerRef.current);
             }
@@ -317,13 +418,15 @@ export default function EditorClient({ posterId, updatedAt, initialDoc }: Editor
             void exportPdfAfterSave();
           }}
           saving={isSaving}
-          saveDisabled={!isDirty && !saveError}
+          saveDisabled={!canEditNow || (!isDirty && !saveError)}
           exportDisabled={Boolean(saveError)}
         />
       </div>
 
       <div className={styles.topRightMeta}>
-        <span className={styles.statusMeta}>Last save {formatDate(lastSavedAt)}</span>
+        <span className={styles.statusMeta}>
+          {canEditNow ? `Last save ${formatDate(lastSavedAt)}` : "Read-only session"}
+        </span>
         {saveError ? <span className={styles.errorMeta}>{saveError}</span> : null}
       </div>
 
@@ -358,12 +461,34 @@ export default function EditorClient({ posterId, updatedAt, initialDoc }: Editor
         >
           L
         </button>
+        {capabilities.canManageMembers ? (
+          <button
+            type="button"
+            className={`${styles.railButton} ${leftPanelMode === "share" ? styles.railButtonActive : ""}`}
+            onClick={() => toggleLeftPanelMode("share")}
+            aria-pressed={leftPanelMode === "share"}
+            aria-label="Share poster"
+            title="Share poster"
+          >
+            S
+          </button>
+        ) : null}
+        <button
+          type="button"
+          className={`${styles.railButton} ${leftPanelMode === "comments" ? styles.railButtonActive : ""}`}
+          onClick={() => toggleLeftPanelMode("comments")}
+          aria-pressed={leftPanelMode === "comments"}
+          aria-label="Comments"
+          title="Comments"
+        >
+          M
+        </button>
       </aside>
 
       {leftPanelMode ? (
         <section className={styles.leftPanel}>
           {leftPanelMode === "text" ? (
-            <HeaderFooterEditors />
+            <HeaderFooterEditors editable={canEditNow} />
           ) : null}
 
           {leftPanelMode === "theme" ? (
@@ -379,11 +504,45 @@ export default function EditorClient({ posterId, updatedAt, initialDoc }: Editor
               <p className={styles.panelText}>Orientation and size controls are scheduled for the upcoming controls pass.</p>
             </div>
           ) : null}
+
+          {leftPanelMode === "share" ? (
+            <ShareMembersPanel posterId={posterId} canManageMembers={capabilities.canManageMembers} />
+          ) : null}
+
+          {leftPanelMode === "comments" ? (
+            <CommentsPanel
+              posterId={posterId}
+              canComment={capabilities.canComment}
+              commentMode={commentMode}
+              selectedAnchor={selectedCommentAnchor}
+              onCommentsUpdated={setComments}
+              onToggleCommentMode={() => setCommentMode((current) => !current)}
+              onClearSelectedAnchor={() => setSelectedCommentAnchor(null)}
+            />
+          ) : null}
         </section>
       ) : null}
 
       <section className={styles.canvasViewport}>
-        <MainBlocksEditor fullscreen />
+        <MainBlocksEditor
+          fullscreen
+          canEdit={canEditNow}
+          canComment={capabilities.canComment}
+          commentMode={commentMode}
+          commentCountByRegionId={commentCounts.byRegionId}
+          commentCountByFloatingId={commentCounts.byFloatingId}
+          headerCommentCount={commentCounts.header + commentCounts.headerSubtitle}
+          footerCommentCount={commentCounts.footer}
+          onSelectCommentAnchor={(anchor) => {
+            if (!capabilities.canComment) {
+              return;
+            }
+            setSelectedCommentAnchor(anchor);
+            if (leftPanelMode !== "comments") {
+              setLeftPanelMode("comments");
+            }
+          }}
+        />
       </section>
     </main>
   );

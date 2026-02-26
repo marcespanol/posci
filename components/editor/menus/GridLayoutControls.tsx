@@ -6,6 +6,7 @@ interface GridLayoutControlsProps {
   regionCount: number;
   selectedRegionId: string | null;
   drawMode: boolean;
+  canEdit?: boolean;
   drawStatusText?: string | null;
   canSplitHorizontally: boolean;
   canSplitVertically: boolean;
@@ -29,6 +30,7 @@ export default function GridLayoutControls({
   regionCount,
   selectedRegionId,
   drawMode,
+  canEdit = true,
   drawStatusText,
   canSplitHorizontally,
   canSplitVertically,
@@ -56,46 +58,47 @@ export default function GridLayoutControls({
         type="button"
         className={`${styles.controlButton} ${drawMode ? styles.controlButtonActive : ""}`}
         onClick={onToggleDrawMode}
+        disabled={!canEdit}
       >
         {drawMode ? "Drawing" : "Draw region"}
       </button>
       {drawStatusText ? <p className={styles.gridDrawStatus}>{drawStatusText}</p> : null}
-      <button type="button" className={styles.controlButton} disabled={!hasSelection} onClick={onMoveUp}>
+      <button type="button" className={styles.controlButton} disabled={!canEdit || !hasSelection} onClick={onMoveUp}>
         Up
       </button>
-      <button type="button" className={styles.controlButton} disabled={!hasSelection} onClick={onMoveLeft}>
+      <button type="button" className={styles.controlButton} disabled={!canEdit || !hasSelection} onClick={onMoveLeft}>
         Left
       </button>
-      <button type="button" className={styles.controlButton} disabled={!hasSelection} onClick={onMoveRight}>
+      <button type="button" className={styles.controlButton} disabled={!canEdit || !hasSelection} onClick={onMoveRight}>
         Right
       </button>
-      <button type="button" className={styles.controlButton} disabled={!hasSelection} onClick={onMoveDown}>
+      <button type="button" className={styles.controlButton} disabled={!canEdit || !hasSelection} onClick={onMoveDown}>
         Down
       </button>
-      <button type="button" className={styles.controlButton} disabled={!canSplitHorizontally} onClick={onSplitHorizontal}>
+      <button type="button" className={styles.controlButton} disabled={!canEdit || !canSplitHorizontally} onClick={onSplitHorizontal}>
         Split H
       </button>
-      <button type="button" className={styles.controlButton} disabled={!canSplitVertically} onClick={onSplitVertical}>
+      <button type="button" className={styles.controlButton} disabled={!canEdit || !canSplitVertically} onClick={onSplitVertical}>
         Split V
       </button>
-      <button type="button" className={styles.controlButton} disabled={!canMergeLeft} onClick={onMergeLeft}>
+      <button type="button" className={styles.controlButton} disabled={!canEdit || !canMergeLeft} onClick={onMergeLeft}>
         Merge Left
       </button>
-      <button type="button" className={styles.controlButton} disabled={!canMergeRight} onClick={onMergeRight}>
+      <button type="button" className={styles.controlButton} disabled={!canEdit || !canMergeRight} onClick={onMergeRight}>
         Merge Right
       </button>
       <button
         type="button"
         className={styles.controlButton}
-        disabled={!hasSelection || regionCount <= 1}
+        disabled={!canEdit || !hasSelection || regionCount <= 1}
         onClick={onDelete}
       >
         Delete
       </button>
-      <button type="button" className={styles.controlButton} onClick={onAddImage}>
+      <button type="button" className={styles.controlButton} onClick={onAddImage} disabled={!canEdit}>
         Add image
       </button>
-      <button type="button" className={styles.controlButton} onClick={onAddFloatingParagraph}>
+      <button type="button" className={styles.controlButton} onClick={onAddFloatingParagraph} disabled={!canEdit}>
         Add floating
       </button>
     </div>

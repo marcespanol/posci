@@ -35,8 +35,7 @@ export const savePosterAction = async (payload: SavePosterPayload) => {
       title,
       doc: payload.doc
     })
-    .eq("id", payload.posterId)
-    .eq("user_id", user.id);
+    .eq("id", payload.posterId);
 
   if (error) {
     throw new Error(`Failed to save poster: ${error.message}`);

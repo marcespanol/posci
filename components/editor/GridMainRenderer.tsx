@@ -2,8 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 
+import MessageCircleIcon from "@/components/icons/MessageCircleIcon";
 import styles from "@/components/editor/main-blocks-editor.module.css";
 import MainRichTextEditor from "@/components/editor/tiptap/MainRichTextEditor";
+import type { PosterCommentAnchorTarget } from "@/lib/poster/comments";
 import type { PosterDocV2, PosterMainRegion, TipTapJsonContent } from "@/lib/poster/types";
 
 type GridResizeHandle = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
@@ -23,6 +25,11 @@ interface GridMainRendererProps {
   regions: PosterMainRegion[];
   selectedRegionId: string | null;
   drawMode: boolean;
+  canEdit?: boolean;
+  commentMode?: boolean;
+  canComment?: boolean;
+  commentCountByRegionId?: Record<string, number>;
+  onSelectCommentAnchor?: (anchor: PosterCommentAnchorTarget) => void;
   onSelectRegion: (regionId: string) => void;
   onActivateGridRegion: (regionId: string) => void;
   onUpdateRegionRect: (
@@ -55,6 +62,11 @@ export default function GridMainRenderer({
   regions,
   selectedRegionId,
   drawMode,
+  canEdit = true,
+  commentMode = false,
+  canComment = false,
+  commentCountByRegionId,
+  onSelectCommentAnchor,
   onSelectRegion,
   onActivateGridRegion,
   onUpdateRegionRect,
@@ -75,7 +87,7 @@ export default function GridMainRenderer({
   }, [createPreviewRect, regions]);
 
   useEffect(() => {
-    if (!gridDragState) {
+    if (!canEdit || !gridDragState) {
       return;
     }
 
@@ -172,10 +184,10 @@ export default function GridMainRenderer({
       window.removeEventListener("pointerup", endDrag);
       window.removeEventListener("pointercancel", endDrag);
     };
-  }, [gridDragState, onUpdateRegionRect, regions, v2Doc]);
+  }, [canEdit, gridDragState, onUpdateRegionRect, regions, v2Doc]);
 
   useEffect(() => {
-    if (!createDragState || !drawMode) {
+    if (!canEdit || !createDragState || !drawMode) {
       return;
     }
 
@@ -245,7 +257,7 @@ export default function GridMainRenderer({
       window.removeEventListener("pointerup", endCreateDrag);
       window.removeEventListener("pointercancel", endCreateDrag);
     };
-  }, [createDragState, createPreviewRect, drawMode, onCreateRegion, onCreateRegionResult, regions, v2Doc]);
+  }, [canEdit, createDragState, createPreviewRect, drawMode, onCreateRegion, onCreateRegionResult, regions, v2Doc]);
 
   useEffect(() => {
     if (!drawMode) {
@@ -256,6 +268,9 @@ export default function GridMainRenderer({
 
   const startGridRegionMove = (event: ReactPointerEvent<HTMLElement>, region: PosterMainRegion) => {
     if (event.button !== 0) {
+      return;
+    }
+    if (!canEdit) {
       return;
     }
     if (drawMode) {
@@ -291,6 +306,9 @@ export default function GridMainRenderer({
       if (event.button !== 0) {
         return;
       }
+      if (!canEdit) {
+        return;
+      }
 
       event.preventDefault();
       event.stopPropagation();
@@ -317,9 +335,9 @@ export default function GridMainRenderer({
       <div className={styles.gridOverlay} aria-hidden="true" />
       <div
         ref={gridStageRef}
-        className={`${styles.gridStage} ${drawMode ? styles.gridStageDrawMode : ""}`}
+        className={`${styles.gridStage} ${drawMode && canEdit ? styles.gridStageDrawMode : ""}`}
         onPointerDown={(event) => {
-          if (!drawMode || event.button !== 0) {
+          if (!canEdit || !drawMode || event.button !== 0) {
             return;
           }
 
@@ -367,6 +385,7 @@ export default function GridMainRenderer({
         {regions.map((region) => {
           const block = v2Doc.blocks[region.blockId];
           const isActive = selectedRegionId === region.id;
+          const commentCount = commentCountByRegionId?.[region.id] ?? 0;
 
           return (
             <section
@@ -377,7 +396,14 @@ export default function GridMainRenderer({
                 gridRow: `${region.y + 1} / span ${region.h}`
               }}
               onPointerDown={(event) => {
-                if (drawMode) {
+                if (commentMode && canComment) {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onActivateGridRegion(region.id);
+                  onSelectCommentAnchor?.({ type: "region", id: region.id });
+                  return;
+                }
+                if (drawMode || !canEdit) {
                   return;
                 }
                 onActivateGridRegion(region.id);
@@ -392,6 +418,7 @@ export default function GridMainRenderer({
                     key={block.id}
                     content={block.content}
                     onChange={(content) => onSetBlockContent(block.id, content)}
+                    editable={canEdit}
                   />
                 ) : block.type === "image" ? (
                   <div className={styles.emptyState}>Image block region (v2 preview).</div>
@@ -399,7 +426,26 @@ export default function GridMainRenderer({
                   <div className={styles.emptyState}>Unsupported block type in region.</div>
                 )}
               </div>
-              {isActive ? (
+              {commentCount > 0 ? (
+                <button
+                  type="button"
+                  className={`${styles.commentMarker} ${styles.commentMarkerRegion} ${styles.noPan}`}
+                  aria-label={`${commentCount} comments`}
+                  onPointerDown={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                  }}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    onSelectCommentAnchor?.({ type: "region", id: region.id });
+                  }}
+                >
+                  <MessageCircleIcon size={12} />
+                  <span>{commentCount}</span>
+                </button>
+              ) : null}
+              {canEdit && isActive ? (
                 <>
                   <button
                     type="button"

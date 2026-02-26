@@ -1,0 +1,184 @@
+.panel {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.headerRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.title {
+  margin: 0;
+  font-size: 0.98rem;
+}
+
+.modeRow {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.toggleButton,
+.secondaryButton,
+.primaryButton,
+.linkButton {
+  border: 1px solid #d3dde8;
+  background: #fff;
+  color: #20364f;
+  border-radius: 8px;
+  padding: 0.35rem 0.55rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.toggleButtonActive,
+.primaryButton {
+  border-color: #9ec5ff;
+  background: #eaf3ff;
+  color: #123d7a;
+}
+
+.toggleButton:disabled,
+.secondaryButton:disabled,
+.primaryButton:disabled,
+.linkButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.checkboxLabel {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: #4f6175;
+  font-size: 0.8rem;
+}
+
+.helper {
+  margin: 0;
+  color: #52667d;
+  font-size: 0.82rem;
+}
+
+.anchorBox,
+.composeBox {
+  display: grid;
+  gap: 0.45rem;
+  border: 1px solid #dbe4ee;
+  border-radius: 10px;
+  background: #fbfdff;
+  padding: 0.55rem;
+}
+
+.anchorHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.anchorLabel {
+  font-size: 0.76rem;
+  color: #63788f;
+}
+
+.anchorValue {
+  margin: 0;
+  font-size: 0.82rem;
+  color: #20364f;
+}
+
+.textarea {
+  width: 100%;
+  border: 1px solid #d3dde8;
+  border-radius: 8px;
+  padding: 0.5rem 0.55rem;
+  font: inherit;
+  resize: vertical;
+  min-height: 92px;
+}
+
+.textarea:focus {
+  outline: 2px solid #cce0ff;
+  outline-offset: 1px;
+}
+
+.successText,
+.errorText {
+  margin: 0;
+  font-size: 0.8rem;
+}
+
+.successText {
+  color: #166534;
+}
+
+.errorText {
+  color: #b42318;
+}
+
+.commentList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.commentRow {
+  border: 1px solid #dbe4ee;
+  border-radius: 10px;
+  background: #fff;
+  padding: 0.55rem;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.commentRowSelectedAnchor {
+  border-color: #9cc0ea;
+  box-shadow: inset 0 0 0 1px #d9ebff;
+}
+
+.commentMetaRow {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.anchorChip,
+.statusChip {
+  border-radius: 999px;
+  border: 1px solid #d8e1eb;
+  padding: 0.14rem 0.45rem;
+  font-size: 0.73rem;
+  color: #475a6f;
+}
+
+.commentBody {
+  margin: 0;
+  white-space: pre-wrap;
+  color: #1f334a;
+  font-size: 0.84rem;
+}
+
+.commentFooter {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.authorText {
+  font-size: 0.72rem;
+  color: #6b7c90;
+}
+
+.linkButton {
+  background: transparent;
+  padding: 0.18rem 0.4rem;
+}

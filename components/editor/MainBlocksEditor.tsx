@@ -5,6 +5,7 @@ import { TransformComponent, TransformWrapper } from "react-zoom-pan-pinch";
 
 import FloatingParagraphLayer from "@/components/editor/FloatingParagraphLayer";
 import GridMainRenderer from "@/components/editor/GridMainRenderer";
+import MessageCircleIcon from "@/components/icons/MessageCircleIcon";
 import GridLayoutControls from "@/components/editor/menus/GridLayoutControls";
 import styles from "@/components/editor/main-blocks-editor.module.css";
 import RichTextMarksEditor from "@/components/editor/tiptap/RichTextMarksEditor";
@@ -16,11 +17,20 @@ import { useMainTextBlockTargetResolver } from "@/components/editor/useMainTextB
 import {
   selectPosterReadDoc
 } from "@/lib/store/poster-read-selectors";
+import type { PosterCommentAnchorTarget } from "@/lib/poster/comments";
 import type { PosterFloatingParagraphBlock } from "@/lib/poster/types";
 import { usePosterEditorStore } from "@/lib/store/poster-store";
 
 interface MainBlocksEditorProps {
   fullscreen?: boolean;
+  canEdit?: boolean;
+  canComment?: boolean;
+  commentMode?: boolean;
+  onSelectCommentAnchor?: (anchor: PosterCommentAnchorTarget) => void;
+  commentCountByRegionId?: Record<string, number>;
+  commentCountByFloatingId?: Record<string, number>;
+  headerCommentCount?: number;
+  footerCommentCount?: number;
 }
 
 const isPanLockTarget = (target: EventTarget | null): boolean => {
@@ -31,7 +41,17 @@ const isPanLockTarget = (target: EventTarget | null): boolean => {
   return Boolean(target.closest("button,input,textarea,select,[contenteditable='true'],a,label,.no-pan"));
 };
 
-export default function MainBlocksEditor({ fullscreen = false }: MainBlocksEditorProps) {
+export default function MainBlocksEditor({
+  fullscreen = false,
+  canEdit = true,
+  canComment = false,
+  commentMode = false,
+  onSelectCommentAnchor,
+  commentCountByRegionId,
+  commentCountByFloatingId,
+  headerCommentCount = 0,
+  footerCommentCount = 0
+}: MainBlocksEditorProps) {
   const readDoc = usePosterEditorStore(selectPosterReadDoc);
   const posterId = usePosterEditorStore((state) => state.posterId);
   const setBlockContent = usePosterEditorStore((state) => state.setBlockContent);
@@ -175,7 +195,7 @@ export default function MainBlocksEditor({ fullscreen = false }: MainBlocksEdito
       {!fullscreen ? <p className={styles.helper}>Supports heading, paragraph, image block, and inline images.</p> : null}
       {!fullscreen ? (
         <div className={styles.controls}>
-          <button type="button" className={styles.controlButton} onClick={addFloatingParagraph}>
+          <button type="button" className={styles.controlButton} onClick={addFloatingParagraph} disabled={!canEdit}>
             Add floating paragraph
           </button>
           <p className={styles.counter}>Regions: {grid.regions.length}</p>
@@ -242,11 +262,39 @@ export default function MainBlocksEditor({ fullscreen = false }: MainBlocksEdito
                   >
                     <header
                       className={`${styles.artboardHeader} ${styles.richText}`}
+                      onPointerDownCapture={(event) => {
+                        if (!commentMode || !canComment) {
+                          return;
+                        }
+                        event.preventDefault();
+                        event.stopPropagation();
+                        onSelectCommentAnchor?.({ type: "header", id: null });
+                      }}
                     >
+                      {headerCommentCount > 0 ? (
+                        <button
+                          type="button"
+                          className={`${styles.commentMarker} ${styles.commentMarkerHeader} ${styles.noPan}`}
+                          aria-label={`${headerCommentCount} comments`}
+                          onPointerDown={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                          }}
+                          onClick={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            onSelectCommentAnchor?.({ type: "header", id: null });
+                          }}
+                        >
+                          <MessageCircleIcon size={12} />
+                          <span>{headerCommentCount}</span>
+                        </button>
+                      ) : null}
                       <RichTextMarksEditor
                         content={readDoc.sections.header.content}
                         onChange={setHeaderContent}
                         variant="artboardHeader"
+                        editable={canEdit}
                       />
                       {(readDoc.meta.headerSubtitleVisible ?? true) && readDoc.sections.headerSubtitle ? (
                         <RichTextMarksEditor
@@ -254,6 +302,7 @@ export default function MainBlocksEditor({ fullscreen = false }: MainBlocksEdito
                           onChange={setHeaderSubtitleContent}
                           singleLine
                           variant="artboardFooter"
+                          editable={canEdit}
                         />
                       ) : null}
                     </header>
@@ -265,6 +314,11 @@ export default function MainBlocksEditor({ fullscreen = false }: MainBlocksEdito
                           regions={grid.regions}
                           selectedRegionId={grid.selectedRegionId}
                           drawMode={gridDrawMode}
+                          canEdit={canEdit}
+                          commentMode={commentMode}
+                          canComment={canComment}
+                          commentCountByRegionId={commentCountByRegionId}
+                          onSelectCommentAnchor={onSelectCommentAnchor}
                           onSelectRegion={grid.selectRegion}
                           onActivateGridRegion={(regionId) => {
                             grid.selectRegion(regionId);
@@ -284,18 +338,53 @@ export default function MainBlocksEditor({ fullscreen = false }: MainBlocksEdito
                         />
                       ) : null}
 
-                      <FloatingParagraphLayer blocks={floatingBlocks} />
+                      <FloatingParagraphLayer
+                        blocks={floatingBlocks}
+                        canEdit={canEdit}
+                        commentMode={commentMode}
+                        canComment={canComment}
+                        commentCountByFloatingId={commentCountByFloatingId}
+                        onSelectCommentAnchor={onSelectCommentAnchor}
+                      />
                     </section>
 
                     {readDoc.meta.footerVisible ? (
                       <footer
                         className={`${styles.artboardFooter} ${styles.richText}`}
+                        onPointerDownCapture={(event) => {
+                          if (!commentMode || !canComment) {
+                            return;
+                          }
+                          event.preventDefault();
+                          event.stopPropagation();
+                          onSelectCommentAnchor?.({ type: "footer", id: null });
+                        }}
                       >
+                        {footerCommentCount > 0 ? (
+                          <button
+                            type="button"
+                            className={`${styles.commentMarker} ${styles.commentMarkerFooter} ${styles.noPan}`}
+                            aria-label={`${footerCommentCount} comments`}
+                            onPointerDown={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                            }}
+                            onClick={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              onSelectCommentAnchor?.({ type: "footer", id: null });
+                            }}
+                          >
+                            <MessageCircleIcon size={12} />
+                            <span>{footerCommentCount}</span>
+                          </button>
+                        ) : null}
                         <RichTextMarksEditor
                           content={readDoc.sections.footer.content}
                           onChange={setFooterContent}
                           singleLine
                           variant="artboardFooter"
+                          editable={canEdit}
                         />
                       </footer>
                     ) : null}
@@ -309,6 +398,7 @@ export default function MainBlocksEditor({ fullscreen = false }: MainBlocksEdito
                   regionCount={grid.regions.length}
                   selectedRegionId={grid.selectedRegionId}
                   drawMode={gridDrawMode}
+                  canEdit={canEdit}
                   drawStatusText={gridDrawStatusText}
                   canSplitHorizontally={grid.canSplitHorizontally}
                   canSplitVertically={grid.canSplitVertically}
@@ -325,9 +415,15 @@ export default function MainBlocksEditor({ fullscreen = false }: MainBlocksEdito
                   onDelete={gridDockActions.onDelete}
                   onAddImage={gridDockActions.onAddImage}
                   onAddFloatingParagraph={() => {
+                    if (!canEdit) {
+                      return;
+                    }
                     addFloatingParagraph();
                   }}
                   onToggleDrawMode={() => {
+                    if (!canEdit) {
+                      return;
+                    }
                     setGridDrawStatusText(null);
                     setGridDrawMode((current) => !current);
                   }}
@@ -343,6 +439,10 @@ export default function MainBlocksEditor({ fullscreen = false }: MainBlocksEdito
         accept="image/*"
         hidden
         onChange={(event) => {
+          if (!canEdit) {
+            event.target.value = "";
+            return;
+          }
           const file = event.target.files?.[0];
           if (file) {
             onImageFilePicked(file);

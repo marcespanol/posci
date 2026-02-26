@@ -17,6 +17,7 @@ interface RichTextMarksEditorProps {
   onChange: (content: TipTapJsonContent) => void;
   singleLine?: boolean;
   variant?: "panel" | "artboardHeader" | "artboardFooter";
+  editable?: boolean;
 }
 
 const normalizeSingleLineText = (text: string): string => text.replace(/\s*\n+\s*/g, " ");
@@ -59,16 +60,26 @@ export default function RichTextMarksEditor({
   content,
   onChange,
   singleLine = false,
-  variant = "panel"
+  variant = "panel",
+  editable = true
 }: RichTextMarksEditorProps) {
   const lastEmittedJsonRef = useRef<string | null>(null);
+  const editableRef = useRef(editable);
+
+  useEffect(() => {
+    editableRef.current = editable;
+  }, [editable]);
 
   const editor = useEditor({
     extensions: [TopLevelDocument, AlignedParagraph, Text, Bold, Italic, Underline],
     content,
+    editable,
     immediatelyRender: false,
     editorProps: {
       handleKeyDown: (_view, event) => {
+        if (!editableRef.current) {
+          return false;
+        }
         if (singleLine && event.key === "Enter") {
           event.preventDefault();
           return true;
@@ -77,7 +88,7 @@ export default function RichTextMarksEditor({
         return false;
       },
       handlePaste: (_view, event) => {
-        if (!singleLine) {
+        if (!editableRef.current || !singleLine) {
           return false;
         }
 
@@ -130,6 +141,10 @@ export default function RichTextMarksEditor({
       lastEmittedJsonRef.current = incoming;
     });
   }, [content, editor]);
+
+  useEffect(() => {
+    editor?.setEditable(editable);
+  }, [editable, editor]);
 
   if (!editor) {
     return null;
@@ -190,6 +205,7 @@ export default function RichTextMarksEditor({
     <div className={`${styles.wrapper} ${variant === "panel" ? "" : styles.wrapperArtboard}`}>
       <BubbleMenu
         editor={editor}
+        shouldShow={({ editor: activeEditor, state }) => editable && activeEditor.isFocused && !state.selection.empty}
         tippyOptions={{
           duration: 120,
           placement: "top",
@@ -203,6 +219,7 @@ export default function RichTextMarksEditor({
             type="button"
             className={`${styles.markButton} ${editor.isActive("bold") ? styles.markButtonActive : ""}`}
             onClick={() => editor.chain().focus().toggleBold().run()}
+            disabled={!editable}
           >
             B
           </button>
@@ -210,6 +227,7 @@ export default function RichTextMarksEditor({
             type="button"
             className={`${styles.markButton} ${editor.isActive("italic") ? styles.markButtonActive : ""}`}
             onClick={() => editor.chain().focus().toggleItalic().run()}
+            disabled={!editable}
           >
             I
           </button>
@@ -217,6 +235,7 @@ export default function RichTextMarksEditor({
             type="button"
             className={`${styles.markButton} ${editor.isActive("underline") ? styles.markButtonActive : ""}`}
             onClick={() => editor.chain().focus().toggleUnderline().run()}
+            disabled={!editable}
           >
             U
           </button>
@@ -224,6 +243,7 @@ export default function RichTextMarksEditor({
             type="button"
             className={`${styles.markButton} ${isAligned("left") ? styles.markButtonActive : ""}`}
             onClick={() => applyParagraphAlignment("left")}
+            disabled={!editable}
           >
             L
           </button>
@@ -231,6 +251,7 @@ export default function RichTextMarksEditor({
             type="button"
             className={`${styles.markButton} ${isAligned("center") ? styles.markButtonActive : ""}`}
             onClick={() => applyParagraphAlignment("center")}
+            disabled={!editable}
           >
             C
           </button>
@@ -238,6 +259,7 @@ export default function RichTextMarksEditor({
             type="button"
             className={`${styles.markButton} ${isAligned("right") ? styles.markButtonActive : ""}`}
             onClick={() => applyParagraphAlignment("right")}
+            disabled={!editable}
           >
             R
           </button>

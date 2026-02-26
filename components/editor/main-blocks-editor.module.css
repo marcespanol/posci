@@ -163,6 +163,7 @@
 }
 
 .artboardHeader {
+  position: relative;
   background: var(--poster-accent, #0b5cad);
   color: #fff;
   border-bottom: 1px solid rgba(255, 255, 255, 0.25);
@@ -242,6 +243,53 @@
   display: flex;
   overflow: visible;
   position: relative;
+}
+
+.commentMarker {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.18rem;
+  border-radius: 999px;
+  border: 1px solid #cfe0f4;
+  background: rgba(255, 255, 255, 0.96);
+  color: #24558f;
+  padding: 0.1rem 0.32rem;
+  font-size: 0.68rem;
+  line-height: 1;
+  box-shadow: 0 6px 16px rgba(10, 20, 35, 0.12);
+  pointer-events: auto;
+  cursor: pointer;
+  white-space: nowrap;
+  min-height: 1.15rem;
+  line-height: 1;
+  font-weight: 600;
+  appearance: none;
+  -webkit-appearance: none;
+  outline: none;
+  z-index: 6;
+}
+
+.commentMarker svg {
+  display: block;
+  flex-shrink: 0;
+}
+
+.commentMarkerRegion {
+  top: 0;
+  right: 0;
+  transform: translate(32%, -32%);
+}
+
+.commentMarkerHeader {
+  top: 0.55rem;
+  right: 0.75rem;
+  color: #0f3b72;
+}
+
+.commentMarkerFooter {
+  top: 0.45rem;
+  right: 0.75rem;
 }
 
 .gridRegionActive {
@@ -339,6 +387,7 @@
 }
 
 .artboardFooter {
+  position: relative;
   background: var(--poster-accent, #0b5cad);
   color: #fff;
   border-top: 1px solid rgba(255, 255, 255, 0.25);

@@ -13,6 +13,7 @@ import styles from "@/components/editor/tiptap/main-rich-text-editor.module.css"
 interface MainRichTextEditorProps {
   content: TipTapJsonContent;
   onChange: (content: TipTapJsonContent) => void;
+  editable?: boolean;
 }
 
 type SelectedImageNodeInfo = {
@@ -169,17 +170,27 @@ const convertImageFileToPng = async (file: File): Promise<File> => {
   }
 };
 
-export default function MainRichTextEditor({ content, onChange }: MainRichTextEditorProps) {
+export default function MainRichTextEditor({
+  content,
+  onChange,
+  editable = true
+}: MainRichTextEditorProps) {
   const posterId = usePosterEditorStore((state) => state.posterId);
   const lastEmittedJsonRef = useRef<string | null>(null);
+  const editableRef = useRef(editable);
+
+  useEffect(() => {
+    editableRef.current = editable;
+  }, [editable]);
 
   const editor = useEditor({
     extensions: mainExtensions,
     content,
+    editable,
     immediatelyRender: false,
     editorProps: {
       handlePaste: (_view, event) => {
-        if (!posterId) {
+        if (!editableRef.current || !posterId) {
           return false;
         }
 
@@ -276,6 +287,10 @@ export default function MainRichTextEditor({ content, onChange }: MainRichTextEd
       lastEmittedJsonRef.current = incoming;
     });
   }, [content, editor]);
+
+  useEffect(() => {
+    editor?.setEditable(editable);
+  }, [editable, editor]);
 
   if (!editor) {
     return null;

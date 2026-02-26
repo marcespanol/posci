@@ -1,0 +1,152 @@
+.panel {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.headerRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.title {
+  margin: 0;
+  font-size: 0.98rem;
+}
+
+.helper {
+  margin: 0;
+  font-size: 0.82rem;
+  color: #52667d;
+}
+
+.helper code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.78rem;
+}
+
+.addRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 0.45rem;
+  align-items: center;
+}
+
+.input,
+.select {
+  border: 1px solid #d3dde8;
+  border-radius: 8px;
+  background: #fff;
+  color: #20364f;
+  padding: 0.42rem 0.55rem;
+  font-size: 0.82rem;
+}
+
+.input:focus,
+.select:focus {
+  outline: 2px solid #cce0ff;
+  outline-offset: 1px;
+}
+
+.primaryButton,
+.secondaryButton,
+.dangerButton {
+  border: 1px solid #d3dde8;
+  border-radius: 8px;
+  background: #fff;
+  color: #20364f;
+  padding: 0.38rem 0.56rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.primaryButton {
+  border-color: #9ec5ff;
+  background: #eaf3ff;
+  color: #123d7a;
+}
+
+.dangerButton {
+  border-color: #efc2c2;
+  color: #9f1d1d;
+  background: #fff5f5;
+}
+
+.primaryButton:disabled,
+.secondaryButton:disabled,
+.dangerButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.successText,
+.errorText {
+  margin: 0;
+  font-size: 0.8rem;
+}
+
+.successText {
+  color: #166534;
+}
+
+.errorText {
+  color: #b42318;
+}
+
+.memberList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.memberRow {
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.55rem;
+  border: 1px solid #dbe4ee;
+  border-radius: 10px;
+  background: #fbfdff;
+}
+
+.memberInfo {
+  display: grid;
+  gap: 0.12rem;
+  min-width: 0;
+}
+
+.memberEmail {
+  font-size: 0.82rem;
+  color: #20364f;
+  word-break: break-word;
+}
+
+.memberMeta {
+  font-size: 0.72rem;
+  color: #6b7c90;
+  word-break: break-all;
+}
+
+.ownerBadge {
+  justify-self: start;
+  border-radius: 999px;
+  border: 1px solid #cfd9e4;
+  padding: 0.18rem 0.5rem;
+  font-size: 0.73rem;
+  color: #42556a;
+}
+
+.memberActions {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 520px) {
+  .addRow {
+    grid-template-columns: 1fr;
+  }
+}

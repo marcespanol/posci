@@ -21,12 +21,18 @@ const DocumentNode = Node.create({
 interface FloatingParagraphEditorProps {
   content: TipTapJsonContent;
   onChange: (content: TipTapJsonContent) => void;
+  editable?: boolean;
 }
 
-export default function FloatingParagraphEditor({ content, onChange }: FloatingParagraphEditorProps) {
+export default function FloatingParagraphEditor({
+  content,
+  onChange,
+  editable = true
+}: FloatingParagraphEditorProps) {
   const editor = useEditor({
     extensions: [DocumentNode, Paragraph, Text, Bold, Italic, Underline],
     content,
+    editable,
     immediatelyRender: false,
     onUpdate: ({ editor: activeEditor }) => {
       onChange(activeEditor.getJSON() as TipTapJsonContent);
@@ -45,6 +51,10 @@ export default function FloatingParagraphEditor({ content, onChange }: FloatingP
 
     editor.commands.setContent(content, false);
   }, [content, editor]);
+
+  useEffect(() => {
+    editor?.setEditable(editable);
+  }, [editable, editor]);
 
   if (!editor) {
     return null;

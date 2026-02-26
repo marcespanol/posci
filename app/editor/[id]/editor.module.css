@@ -100,6 +100,94 @@
   z-index: 50;
 }
 
+.lockBannerDock {
+  position: absolute;
+  top: 0.75rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 55;
+  width: min(760px, calc(100vw - 2rem));
+  pointer-events: none;
+}
+
+.lockBanner {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border: 1px solid #d6dde6;
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 10px 28px rgba(10, 20, 35, 0.12);
+  border-radius: 10px;
+  padding: 0.55rem 0.7rem;
+}
+
+.lockBannerInfo {
+  border-color: #d6dde6;
+}
+
+.lockBannerMuted {
+  border-color: #d6dde6;
+  background: rgba(248, 250, 252, 0.98);
+}
+
+.lockBannerWarning {
+  border-color: #f7c78b;
+  background: rgba(255, 247, 237, 0.98);
+}
+
+.lockBannerError {
+  border-color: #f0a6a6;
+  background: rgba(254, 242, 242, 0.98);
+}
+
+.lockBannerText {
+  display: grid;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.lockBannerText strong {
+  font-size: 0.84rem;
+  color: #13253a;
+}
+
+.lockBannerText span {
+  font-size: 0.78rem;
+  color: #4f6175;
+}
+
+.lockBannerActions {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-shrink: 0;
+}
+
+.lockBannerButton,
+.lockBannerButtonPrimary {
+  border-radius: 8px;
+  border: 1px solid #d3dde8;
+  background: #fff;
+  color: #23415f;
+  padding: 0.38rem 0.6rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.lockBannerButtonPrimary {
+  border-color: #9ec5ff;
+  background: #eaf3ff;
+  color: #123d7a;
+}
+
+.lockBannerButton:disabled,
+.lockBannerButtonPrimary:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+
 .leftRail {
   top: 20rem;
   left: 0.75rem;
@@ -192,5 +280,10 @@
 
   .generalMenuDock {
     top: 8.8rem;
+  }
+
+  .lockBannerDock {
+    top: 7.4rem;
+    width: calc(100vw - 1.1rem);
   }
 }

@@ -2,14 +2,21 @@
 
 import { useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 
+import MessageCircleIcon from "@/components/icons/MessageCircleIcon";
 import styles from "@/components/editor/floating-paragraph-layer.module.css";
 import FloatingParagraphEditor from "@/components/editor/tiptap/FloatingParagraphEditor";
+import type { PosterCommentAnchorTarget } from "@/lib/poster/comments";
 import type { PosterFloatingParagraphBlock } from "@/lib/poster/types";
 import { usePosterEditorStore } from "@/lib/store/poster-store";
 import { selectPosterReadColorTheme } from "@/lib/store/poster-read-selectors";
 
 interface FloatingParagraphLayerProps {
   blocks: PosterFloatingParagraphBlock[];
+  canEdit?: boolean;
+  commentMode?: boolean;
+  canComment?: boolean;
+  commentCountByFloatingId?: Record<string, number>;
+  onSelectCommentAnchor?: (anchor: PosterCommentAnchorTarget) => void;
 }
 
 interface DragSession {
@@ -43,7 +50,14 @@ const isFloatingControlTarget = (target: EventTarget | null): boolean => {
   return Boolean(target.closest("[data-floating-control='true']"));
 };
 
-export default function FloatingParagraphLayer({ blocks }: FloatingParagraphLayerProps) {
+export default function FloatingParagraphLayer({
+  blocks,
+  canEdit = true,
+  commentMode = false,
+  canComment = false,
+  commentCountByFloatingId,
+  onSelectCommentAnchor
+}: FloatingParagraphLayerProps) {
   const setBlockContent = usePosterEditorStore((state) => state.setBlockContent);
   const setFloatingBlockPosition = usePosterEditorStore((state) => state.setFloatingBlockPosition);
   const setFloatingParagraphAppearance = usePosterEditorStore((state) => state.setFloatingParagraphAppearance);
@@ -212,6 +226,10 @@ export default function FloatingParagraphLayer({ blocks }: FloatingParagraphLaye
   };
 
   const beginDrag = (event: ReactPointerEvent<HTMLDivElement>, block: PosterFloatingParagraphBlock) => {
+    if (!canEdit) {
+      return;
+    }
+
     const layer = layerRef.current;
     if (!layer) {
       return;
@@ -270,7 +288,9 @@ export default function FloatingParagraphLayer({ blocks }: FloatingParagraphLaye
       {alignmentGuides.y !== null ? (
         <div className={styles.alignmentGuideHorizontal} style={{ top: `${alignmentGuides.y}px` }} />
       ) : null}
-      {blocks.map((block) => (
+      {blocks.map((block) => {
+        const commentCount = commentCountByFloatingId?.[block.id] ?? 0;
+        return (
         <div
           key={block.id}
           ref={(node) => {
@@ -291,6 +311,15 @@ export default function FloatingParagraphLayer({ blocks }: FloatingParagraphLaye
           }}
           onPointerDown={(event) => {
             bringBlockToFront(block.id);
+            if (commentMode && canComment) {
+              event.preventDefault();
+              event.stopPropagation();
+              onSelectCommentAnchor?.({ type: "floating", id: block.id });
+              return;
+            }
+            if (!canEdit) {
+              return;
+            }
             if (isEditorTarget(event.target)) {
               return;
             }
@@ -308,7 +337,29 @@ export default function FloatingParagraphLayer({ blocks }: FloatingParagraphLaye
             bringBlockToFront(block.id);
           }}
         >
-          <div className={styles.inlineControls} data-floating-control="true">
+          {commentCount > 0 ? (
+            <button
+              type="button"
+              className={styles.commentMarker}
+              aria-label={`${commentCount} comments`}
+              data-floating-control="true"
+              onPointerDown={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                bringBlockToFront(block.id);
+              }}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                bringBlockToFront(block.id);
+                onSelectCommentAnchor?.({ type: "floating", id: block.id });
+              }}
+            >
+              <MessageCircleIcon size={12} />
+              <span>{commentCount}</span>
+            </button>
+          ) : null}
+          {canEdit ? <div className={styles.inlineControls} data-floating-control="true">
             <div className={styles.toneControls} aria-label="Floating paragraph color tone">
               {([0, 1, 2, 3] as const).map((tone) => (
                 <button
@@ -375,12 +426,17 @@ export default function FloatingParagraphLayer({ blocks }: FloatingParagraphLaye
                 <path d="M18 6L6 18M6 6l12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
               </svg>
             </button>
-          </div>
+          </div> : null}
           <div data-floating-editor="true" className={styles.editorShell}>
-            <FloatingParagraphEditor content={block.content} onChange={(content) => setBlockContent(block.id, content)} />
+            <FloatingParagraphEditor
+              content={block.content}
+              onChange={(content) => setBlockContent(block.id, content)}
+              editable={canEdit}
+            />
           </div>
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

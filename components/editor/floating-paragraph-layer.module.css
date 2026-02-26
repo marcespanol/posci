@@ -39,6 +39,39 @@
   max-width: min(48%, 420px);
 }
 
+.commentMarker {
+  position: absolute;
+  top: 0;
+  right: 0;
+  transform: translate(32%, -32%);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.18rem;
+  border-radius: 999px;
+  border: 1px solid #cfe0f4;
+  background: rgba(255, 255, 255, 0.96);
+  color: #24558f;
+  padding: 0.1rem 0.32rem;
+  font-size: 0.68rem;
+  line-height: 1;
+  box-shadow: 0 6px 16px rgba(10, 20, 35, 0.12);
+  pointer-events: auto;
+  cursor: pointer;
+  white-space: nowrap;
+  min-height: 1.15rem;
+  line-height: 1;
+  font-weight: 600;
+  appearance: none;
+  -webkit-appearance: none;
+  outline: none;
+  z-index: 255;
+}
+
+.commentMarker svg {
+  display: block;
+  flex-shrink: 0;
+}
+
 .block:hover,
 .block:focus-within,
 .blockActive {
@@ -65,7 +98,8 @@
 
 .blockParallelogram .editorShell,
 .blockParallelogram .inlineControls,
-.blockParallelogram .removeButton {
+.blockParallelogram .removeButton,
+.blockParallelogram .commentMarker {
   transform: skewX(14deg);
 }
 
