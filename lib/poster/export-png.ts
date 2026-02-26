@@ -41,9 +41,17 @@ const triggerDownload = (blob: Blob, filename: string): void => {
 };
 
 export const renderPosterElementToPngDataUrl = async (element: HTMLElement): Promise<string> => {
-  const rect = element.getBoundingClientRect();
-  const width = Math.max(1, Math.ceil(rect.width));
-  const height = Math.max(1, Math.ceil(rect.height));
+  const computed = window.getComputedStyle(element);
+  const computedWidth = Number.parseFloat(computed.width);
+  const computedHeight = Number.parseFloat(computed.height);
+  const width = Math.max(
+    1,
+    Math.ceil(Number.isFinite(computedWidth) && computedWidth > 0 ? computedWidth : element.offsetWidth)
+  );
+  const height = Math.max(
+    1,
+    Math.ceil(Number.isFinite(computedHeight) && computedHeight > 0 ? computedHeight : element.offsetHeight)
+  );
   const cloned = cloneWithInlineStyles(element);
 
   const serialized = new XMLSerializer().serializeToString(cloned);

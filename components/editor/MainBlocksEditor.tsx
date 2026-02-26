@@ -50,6 +50,7 @@ export default function MainBlocksEditor({ fullscreen = false }: MainBlocksEdito
   const [spacePanMode, setSpacePanMode] = useState(false);
   const [gridDrawMode, setGridDrawMode] = useState(false);
   const [gridDrawStatusText, setGridDrawStatusText] = useState<string | null>(null);
+  const [zoomScale, setZoomScale] = useState(1);
 
   const syncPanWithActiveElement = () => {
     const active = document.activeElement;
@@ -187,6 +188,9 @@ export default function MainBlocksEditor({ fullscreen = false }: MainBlocksEdito
         maxScale={2.6}
         centerOnInit
         centerZoomedOut
+        onTransformed={(_ref, state) => {
+          setZoomScale(state.scale);
+        }}
         panning={{
           disabled: spacePanMode ? false : panDisabled,
           velocityDisabled: true,
@@ -199,7 +203,7 @@ export default function MainBlocksEditor({ fullscreen = false }: MainBlocksEdito
         wheel={{ step: 0.08 }}
         doubleClick={{ disabled: true }}
       >
-        {({ zoomIn, zoomOut, resetTransform, instance }) => (
+        {({ zoomIn, zoomOut, resetTransform }) => (
           <div className={styles.zoomShell}>
             <div className={`${styles.controls} ${styles.noPan} ${fullscreen ? styles.zoomDock : ""}`}>
               <button type="button" className={styles.controlButton} onClick={() => zoomOut()}>
@@ -211,7 +215,7 @@ export default function MainBlocksEditor({ fullscreen = false }: MainBlocksEdito
               <button type="button" className={styles.controlButton} onClick={() => resetTransform()}>
                 Reset
               </button>
-              <p className={styles.counter}>Scale: {(instance.transformState.scale * 100).toFixed(0)}%</p>
+              <p className={styles.counter}>Scale: {(zoomScale * 100).toFixed(0)}%</p>
             </div>
 
             <div

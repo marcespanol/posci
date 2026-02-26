@@ -742,14 +742,14 @@ export const usePosterEditorStore = create<PosterEditorState>((set) => ({
       const selectedRegionId =
         state.gridPreviewSelectedRegionId && nextRegions.some((region) => region.id === state.gridPreviewSelectedRegionId)
           ? state.gridPreviewSelectedRegionId
-          : (nextRegions[0]?.id ?? null);
+          : null;
 
       if (state.gridModeDocV2) {
         const mirrorRegions = state.gridModeDocV2.sections.main.regions;
         const mirrorSelectedRegionId =
           state.gridPreviewSelectedRegionId && mirrorRegions.some((region) => region.id === state.gridPreviewSelectedRegionId)
             ? state.gridPreviewSelectedRegionId
-            : (mirrorRegions[0]?.id ?? null);
+            : null;
 
         if (state.gridPreviewSelectedRegionId === mirrorSelectedRegionId) {
           return state;
