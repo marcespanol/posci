@@ -8,6 +8,7 @@ export const createDefaultPosterDoc = (title: string): PosterDocV2 => {
       orientation: "portrait",
       sizePreset: "A1",
       typographyTheme: "SERIF_HEADERS_SANS_BODY",
+      baseTypeSizePt: 12,
       colorTheme: "BLUE",
       headerSubtitleVisible: true,
       footerVisible: true

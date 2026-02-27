@@ -3,6 +3,7 @@
 import styles from "@/components/editor/menus/general-options-menu.module.css";
 import {
   selectPosterReadColorTheme,
+  selectPosterReadBaseTypeSizePt,
   selectPosterReadFooterVisible,
   selectPosterReadHeaderSubtitleVisible,
   selectPosterReadOrientation,
@@ -13,6 +14,7 @@ import { usePosterEditorStore } from "@/lib/store/poster-store";
 
 export default function GeneralOptionsMenu() {
   const typographyTheme = usePosterEditorStore(selectPosterReadTypographyTheme);
+  const baseTypeSizePt = usePosterEditorStore(selectPosterReadBaseTypeSizePt);
   const colorTheme = usePosterEditorStore(selectPosterReadColorTheme);
   const orientation = usePosterEditorStore(selectPosterReadOrientation);
   const sizePreset = usePosterEditorStore(selectPosterReadSizePreset);
@@ -23,6 +25,7 @@ export default function GeneralOptionsMenu() {
   const undo = usePosterEditorStore((state) => state.undo);
   const redo = usePosterEditorStore((state) => state.redo);
   const setTypographyTheme = usePosterEditorStore((state) => state.setTypographyTheme);
+  const setBaseTypeSizePt = usePosterEditorStore((state) => state.setBaseTypeSizePt);
   const setColorTheme = usePosterEditorStore((state) => state.setColorTheme);
   const setOrientation = usePosterEditorStore((state) => state.setOrientation);
   const setSizePreset = usePosterEditorStore((state) => state.setSizePreset);
@@ -61,6 +64,23 @@ export default function GeneralOptionsMenu() {
         >
           Sans/Mono
         </button>
+      </div>
+
+      <div className={styles.row}>
+        <span className={styles.label}>Base size</span>
+        <select
+          className={styles.button}
+          value={String(baseTypeSizePt)}
+          onChange={(event) => {
+            setBaseTypeSizePt(Number(event.target.value));
+          }}
+        >
+          {[8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32].map((size) => (
+            <option key={size} value={String(size)}>
+              {size}pt
+            </option>
+          ))}
+        </select>
       </div>
 
       <div className={styles.row}>

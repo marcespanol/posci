@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { TransformComponent, TransformWrapper } from "react-zoom-pan-pinch";
 
 import FloatingParagraphLayer from "@/components/editor/FloatingParagraphLayer";
@@ -32,6 +32,12 @@ interface MainBlocksEditorProps {
   headerCommentCount?: number;
   footerCommentCount?: number;
 }
+
+const PHYSICAL_WIDTH_MM_BY_PRESET: Record<"A1" | "SCREEN_X2", number> = {
+  A1: 594,
+  // Screen preset has no physical paper size; keep a stable approximation tied to A1 width.
+  SCREEN_X2: 594
+};
 
 const isPanLockTarget = (target: EventTarget | null): boolean => {
   if (!(target instanceof HTMLElement)) {
@@ -185,6 +191,29 @@ export default function MainBlocksEditor({
   const artboardColorClass = readDoc.meta.colorTheme === "GREEN" ? styles.themeGreen : styles.themeBlue;
   const artboardTypeClass =
     readDoc.meta.typographyTheme === "SANS_HEADERS_MONO_BODY" ? styles.typeSansMono : styles.typeSerifSans;
+  const baseTypeSizePt =
+    Number.isFinite(readDoc.meta.baseTypeSizePt) && readDoc.meta.baseTypeSizePt
+      ? Math.max(6, Math.min(72, readDoc.meta.baseTypeSizePt))
+      : 12;
+  const ptToMm = 25.4 / 72;
+  const baseTypeMm = baseTypeSizePt * ptToMm;
+  const artboardWidthPx = readDoc.meta.sizePreset === "A1"
+    ? readDoc.meta.orientation === "landscape"
+      ? 1273
+      : 900
+    : readDoc.meta.orientation === "landscape"
+      ? 1180
+      : 860;
+  const physicalWidthMm = PHYSICAL_WIDTH_MM_BY_PRESET[readDoc.meta.sizePreset] ?? 594;
+  const pxPerMm = artboardWidthPx / physicalWidthMm;
+  const bodyPx = baseTypeMm * pxPerMm;
+  const artboardStyle = {
+    "--poster-font-body": `${bodyPx}px`,
+    "--poster-font-h2": `${bodyPx * 1.15}px`,
+    "--poster-font-header-title": `${bodyPx * 2}px`,
+    "--poster-font-header-subtitle": `${bodyPx * 0.95}px`,
+    "--poster-font-footer": `${bodyPx * 0.88}px`
+  } as CSSProperties;
   const floatingBlocks = Object.values(readDoc.blocks).filter(
     (block): block is PosterFloatingParagraphBlock => block.type === "floatingParagraph"
   );
@@ -259,6 +288,7 @@ export default function MainBlocksEditor({
                   <article
                     data-poster-artboard="true"
                     className={`${styles.artboard} ${artboardSizeClass} ${artboardColorClass} ${artboardTypeClass}`}
+                    style={artboardStyle}
                   >
                     <header
                       className={`${styles.artboardHeader} ${styles.richText}`}

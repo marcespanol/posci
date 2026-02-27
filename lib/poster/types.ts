@@ -80,6 +80,7 @@ export interface PosterDoc {
     orientation: PosterOrientation;
     sizePreset: PosterSizePreset;
     typographyTheme: TypographyTheme;
+    baseTypeSizePt?: number;
     colorTheme: ColorTheme;
     headerSubtitleVisible?: boolean;
     footerVisible: boolean;
@@ -130,6 +131,7 @@ export interface PosterDocV2 {
     orientation: PosterOrientation;
     sizePreset: PosterSizePreset;
     typographyTheme: TypographyTheme;
+    baseTypeSizePt?: number;
     colorTheme: ColorTheme;
     headerSubtitleVisible?: boolean;
     footerVisible: boolean;

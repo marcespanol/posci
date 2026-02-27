@@ -10,6 +10,28 @@ import type {
 const GRID_COLS = 24 as const;
 const GRID_ROWS = 12 as const;
 const DEFAULT_GAP_PX = 12;
+const clampBaseTypeSizePt = (value: number | undefined): number => {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return 12;
+  }
+
+  return Math.max(6, Math.min(72, value));
+};
+
+const deriveBaseTypeSizePt = (
+  baseTypeSizePt: number | undefined,
+  legacyTypographyScale: number | undefined
+): number => {
+  if (typeof baseTypeSizePt === "number" && Number.isFinite(baseTypeSizePt)) {
+    return clampBaseTypeSizePt(baseTypeSizePt);
+  }
+
+  if (typeof legacyTypographyScale === "number" && Number.isFinite(legacyTypographyScale)) {
+    return clampBaseTypeSizePt(12 * legacyTypographyScale);
+  }
+
+  return 12;
+};
 
 interface RatioItem {
   id: string;
@@ -193,7 +215,8 @@ export const normalizePosterDocV2 = (doc: PosterDocV2): PosterDocV2 => {
     ...doc,
     meta: {
       ...doc.meta,
-      headerSubtitleVisible: doc.meta.headerSubtitleVisible ?? true
+      headerSubtitleVisible: doc.meta.headerSubtitleVisible ?? true,
+      baseTypeSizePt: deriveBaseTypeSizePt(doc.meta.baseTypeSizePt, (doc.meta as { typographyScale?: number }).typographyScale)
     },
     sections: {
       ...doc.sections,
@@ -214,7 +237,8 @@ export const migratePosterDocV1ToV2 = (v1: PosterDoc): PosterDocV2 => {
       version: 2,
       meta: {
         ...v1.meta,
-        headerSubtitleVisible: v1.meta.headerSubtitleVisible ?? true
+        headerSubtitleVisible: v1.meta.headerSubtitleVisible ?? true,
+        baseTypeSizePt: deriveBaseTypeSizePt(v1.meta.baseTypeSizePt, (v1.meta as { typographyScale?: number }).typographyScale)
       },
       sections: {
         header: v1.sections.header,
@@ -298,7 +322,8 @@ export const migratePosterDocV1ToV2 = (v1: PosterDoc): PosterDocV2 => {
     version: 2,
     meta: {
       ...v1.meta,
-      headerSubtitleVisible: v1.meta.headerSubtitleVisible ?? true
+      headerSubtitleVisible: v1.meta.headerSubtitleVisible ?? true,
+      baseTypeSizePt: deriveBaseTypeSizePt(v1.meta.baseTypeSizePt, (v1.meta as { typographyScale?: number }).typographyScale)
     },
     sections: {
       header: v1.sections.header,

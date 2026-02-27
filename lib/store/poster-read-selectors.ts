@@ -24,6 +24,10 @@ export const selectPosterReadTypographyTheme = (state: EditorStateReadSlice): Ty
   return selectPosterReadDoc(state)?.meta.typographyTheme ?? null;
 };
 
+export const selectPosterReadBaseTypeSizePt = (state: EditorStateReadSlice): number => {
+  return selectPosterReadDoc(state)?.meta.baseTypeSizePt ?? 12;
+};
+
 export const selectPosterReadColorTheme = (state: EditorStateReadSlice): ColorTheme | null => {
   return selectPosterReadDoc(state)?.meta.colorTheme ?? null;
 };

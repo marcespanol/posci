@@ -291,6 +291,7 @@ export interface PosterEditorState {
   setDoc: (doc: PosterDocAny) => void;
   setMetaTitle: (title: string) => void;
   setTypographyTheme: (theme: TypographyTheme) => void;
+  setBaseTypeSizePt: (sizePt: number) => void;
   setColorTheme: (theme: ColorTheme) => void;
   setOrientation: (orientation: PosterOrientation) => void;
   setSizePreset: (size: PosterSizePreset) => void;
@@ -418,6 +419,23 @@ export const usePosterEditorStore = create<PosterEditorState>((set) => ({
         meta: {
           ...v2Doc.meta,
           typographyTheme: theme
+        }
+      }));
+    });
+  },
+
+  setBaseTypeSizePt: (sizePt) => {
+    set((state) => {
+      if (!state.gridModeDocV2) {
+        return state;
+      }
+
+      const clampedSizePt = Number.isFinite(sizePt) ? Math.max(6, Math.min(72, sizePt)) : 12;
+      return commitGridModeMirrorMutation(state, (v2Doc) => ({
+        ...v2Doc,
+        meta: {
+          ...v2Doc.meta,
+          baseTypeSizePt: clampedSizePt
         }
       }));
     });

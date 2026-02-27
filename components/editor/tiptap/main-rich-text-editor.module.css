@@ -48,11 +48,13 @@
 
 .editor :global(.ProseMirror p) {
   margin: 0;
+  font-size: var(--poster-font-body, 1rem);
+  line-height: 1.35;
 }
 
 .editor :global(.ProseMirror h2) {
   margin: 0;
-  font-size: 1.15rem;
+  font-size: var(--poster-font-h2, 1.15rem);
 }
 
 .editor :global(.ProseMirror h2 + p),

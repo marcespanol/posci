@@ -114,6 +114,11 @@
 }
 
 .artboard {
+  --poster-font-body: 16px;
+  --poster-font-h2: 18.4px;
+  --poster-font-header-title: 32px;
+  --poster-font-header-subtitle: 15.2px;
+  --poster-font-footer: 14.08px;
   position: relative;
   display: grid;
   grid-template-rows: auto 1fr auto;
@@ -399,11 +404,15 @@
 .richText :global(h3) {
   margin: 0;
   font-family: var(--poster-header-font);
+  font-size: var(--poster-font-h2);
+  line-height: 1.18;
 }
 
 .richText :global(p) {
   margin: 0;
   font-family: var(--poster-body-font);
+  font-size: var(--poster-font-body);
+  line-height: 1.35;
 }
 
 .richText :global(h1 + p),
@@ -415,7 +424,7 @@
 
 .artboardMain .richText :global(h2) {
   color: var(--poster-accent, #0b5cad);
-  font-size: 1.15rem;
+  font-size: var(--poster-font-h2);
 }
 
 .zoomShell {
